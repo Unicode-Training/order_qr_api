@@ -199,6 +199,11 @@ export const guestOrderSchemas = {
             id: idProp,
             ...orderLineProps,
             itemStatus: { type: 'string', enum: ORDER_STATUSES },
+            cancelReason: {
+              type: 'string',
+              nullable: true,
+              description: 'Lý do nhân viên huỷ món (vd. "Hết món")',
+            },
           },
         },
       },

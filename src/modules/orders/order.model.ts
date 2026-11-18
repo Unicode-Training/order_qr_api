@@ -54,6 +54,8 @@ export interface IOrderItem {
   lineTotal: number;
   note: string | null;
   itemStatus: OrderStatus;
+  /** Lý do huỷ món (nhân viên huỷ / hết món). */
+  cancelReason?: string | null;
 }
 
 export interface IOrder {
@@ -113,6 +115,7 @@ const orderItemSchema = new Schema<IOrderItem>({
   lineTotal: { type: Number, required: true },
   note: { type: String, default: null, maxlength: 300 },
   itemStatus: { type: String, enum: ORDER_STATUSES, required: true },
+  cancelReason: { type: String, default: null, maxlength: 300 },
 });
 
 const orderSchema = new Schema<IOrder>(
@@ -134,6 +137,8 @@ orderSchema.index({ businessDate: 1, orderNumber: 1 }, { unique: true });
 orderSchema.index({ sessionId: 1, createdAt: -1 });
 orderSchema.index({ sessionId: 1, updatedAt: 1 });
 orderSchema.index({ tableId: 1, createdAt: -1 });
+orderSchema.index({ businessDate: 1, status: 1, createdAt: 1 });
+orderSchema.index({ updatedAt: 1 });
 
 export const Order = model<IOrder>('Order', orderSchema);
 
