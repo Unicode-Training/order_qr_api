@@ -21,6 +21,9 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET phải có ít nhất 32 ký tự'),
   JWT_ACCESS_EXPIRES: durationSchema.default('15m'),
   JWT_REFRESH_EXPIRES: durationSchema.default('7d'),
+  BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(4).max(15).default(10),
+  LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(10),
+  LOGIN_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().min(1).default(15),
   CLIENT_URL: z.url('CLIENT_URL phải là URL hợp lệ'),
   CORS_ORIGINS: z
     .string()

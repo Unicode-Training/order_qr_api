@@ -8,6 +8,9 @@ const defaults: Record<string, string> = {
   JWT_REFRESH_SECRET: 'test-refresh-secret-0123456789abcdef012',
   JWT_ACCESS_EXPIRES: '15m',
   JWT_REFRESH_EXPIRES: '7d',
+  BCRYPT_SALT_ROUNDS: '4',
+  LOGIN_RATE_LIMIT_MAX: '5',
+  LOGIN_RATE_LIMIT_WINDOW_MINUTES: '15',
   CLIENT_URL: 'http://localhost:3000',
   CORS_ORIGINS: 'http://localhost:3000',
 };
