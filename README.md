@@ -126,3 +126,4 @@ Lỗi:
 - Xác thực: `POST /api/v1/auth/login` → `accessToken` (Bearer, `JWT_ACCESS_EXPIRES`) + `refreshToken` (`JWT_REFRESH_EXPIRES`). Refresh token xoay vòng (dùng 1 lần), DB chỉ lưu SHA-256 (collection `refreshtokens`).
 - **Không phân quyền theo vai trò**: mọi route dưới `/api/v1/admin/*` đều qua middleware `authenticate` (đăng ký sẵn trong `src/routes.ts`), mọi tài khoản đăng nhập đều có toàn quyền. Route cho khách đặt dưới `/api/v1/public/*` (không cần đăng nhập). Lấy user hiện tại trong controller: `getAuthUser(req)`.
 - Tài liệu API: thêm comment `@openapi` trong `*.routes.ts`, Swagger tự quét.
+- Cài đặt nhà hàng (singleton, tự tạo mặc định): `GET/PUT/PATCH /api/v1/admin/settings`, công khai `GET /api/v1/public/restaurant` (kèm `isOpenNow`, `ordering.canOrderNow`, múi giờ `Asia/Ho_Chi_Minh`). Module khác đọc cấu hình qua `settings.service.ts` (`getPricingConfig()`, `getSettings()`, `canOrderAt()`), tiện ích giờ mở cửa ở `src/utils/openingHours.ts`.
