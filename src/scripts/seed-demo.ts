@@ -1,10 +1,12 @@
 /**
  * Seed dữ liệu demo "Le Bistro & Grill": cài đặt nhà hàng, khu vực, ~20 bàn, danh mục, ~20 món (VND),
  * vài tài khoản nhân viên, các phiên/đơn/thanh toán lịch sử 14 ngày (để dashboard có số liệu) và
- * vài bàn đang phục vụ ở thời điểm chạy.
+ * vài bàn đang phục vụ ở thời điểm chạy. Gắn ảnh cho mọi tài nguyên có ảnh: logo + ảnh bìa nhà hàng,
+ * ảnh danh mục, ảnh món (xem `demoImages.ts`).
  *
  *   npm run seed:demo              # idempotent: chỉ thêm phần còn thiếu, không ghi đè dữ liệu đã có
  *   npm run seed:demo -- --reset   # xoá dữ liệu nghiệp vụ (giữ tài khoản không phải demo) rồi seed lại
+ *   npm run seed:demo -- --no-images  # không gắn ảnh (vd. máy không có mạng)
  *
  * Không chạy --reset trên production trừ khi thêm `--yes`.
  */
@@ -15,6 +17,7 @@ import { passwordSchema } from '../modules/auth/auth.schema';
 import { RefreshToken } from '../modules/auth/refreshToken.model';
 import { Area } from '../modules/areas/area.model';
 import { Category } from '../modules/menu/category.model';
+import type { IImage } from '../modules/menu/image.model';
 import { MenuItem, type IMenuItem, type MenuItemTag } from '../modules/menu/menuItem.model';
 import {
   Order,
@@ -37,10 +40,23 @@ import {
 } from '../modules/settings/settings.schema';
 import { getSettings, replaceSettings } from '../modules/settings/settings.service';
 import { Table, type TableStatus } from '../modules/tables/table.model';
+import {
+  isCloudinaryConfigured,
+  uploadImage,
+  type UploadFolder,
+} from '../modules/uploads/cloudinary.service';
+import { detectImageType, MAX_UPLOAD_BYTES } from '../modules/uploads/upload.middleware';
 import { User } from '../modules/users/user.model';
 import { logger } from '../utils/logger';
 import { hashPassword } from '../utils/password';
 import { zonedTimeToUtc } from '../utils/zonedDate';
+import {
+  DEMO_CATEGORY_IMAGES,
+  DEMO_MENU_ITEM_IMAGES,
+  DEMO_RESTAURANT_IMAGES,
+  wikimediaImageUrl,
+  type DemoImageSource,
+} from './demoImages';
 
 export const DEMO_RESTAURANT_NAME = 'Le Bistro & Grill';
 export const DEFAULT_DEMO_PASSWORD = 'Demo@123456';
@@ -392,7 +408,26 @@ export interface SeedDemoOptions {
   now?: Date;
   /** Mật khẩu cho tài khoản demo mới tạo (mặc định SEED_DEMO_PASSWORD hoặc Demo@123456). */
   password?: string;
+  /**
+   * Gắn ảnh demo: `auto` (mặc định) = tải ảnh nguồn rồi upload lên Cloudinary nếu đã cấu hình,
+   * ngược lại lưu thẳng URL nguồn; `link` = luôn lưu URL nguồn; `skip` = không gắn ảnh.
+   */
+  images?: DemoImageMode;
+  /** Thay cách lấy ảnh (để test). */
+  resolveImage?: DemoImageResolver;
 }
+
+export type DemoImageMode = 'auto' | 'link' | 'skip';
+
+/** Một chỗ cần ảnh: thư mục Cloudinary + tên ảnh cố định + nguồn. */
+export interface DemoImageTarget {
+  folder: UploadFolder;
+  /** Tên ảnh cố định trong thư mục, vd. `demo-tiramisu`. */
+  name: string;
+  source: DemoImageSource;
+}
+
+export type DemoImageResolver = (target: DemoImageTarget) => Promise<IImage>;
 
 export interface SeedDemoResult {
   reset: boolean;
@@ -404,6 +439,14 @@ export interface SeedDemoResult {
     orders: number;
     payments: number;
     activeSessions: number;
+  };
+  images: {
+    /** `cloudinary` = đã upload; `link` = lưu URL nguồn; `skipped` = không gắn ảnh. */
+    mode: 'cloudinary' | 'link' | 'skipped';
+    /** Số chỗ vừa được gắn ảnh (logo, ảnh bìa, danh mục, món). */
+    applied: number;
+    /** Số ảnh không lấy được (giữ nguyên `null`, chạy lại seed sẽ thử lại). */
+    failed: number;
   };
 }
 
@@ -506,6 +549,135 @@ async function seedStaff(password: string): Promise<number> {
     created += 1;
   }
   return created;
+}
+
+// ------------------------------------------------------------------ Ảnh
+
+const IMAGE_DOWNLOAD_TIMEOUT_MS = 20_000;
+const IMAGE_CONCURRENCY = 4;
+
+/** Tải ảnh nguồn (kiểm tra kiểu file bằng magic bytes + giới hạn dung lượng như API upload). */
+async function downloadImage(url: string): Promise<Buffer> {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'order-qr-api-seed-demo/1.0' },
+    signal: AbortSignal.timeout(IMAGE_DOWNLOAD_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > MAX_UPLOAD_BYTES) throw new Error(`ảnh quá lớn (${buffer.length} bytes)`);
+  if (!detectImageType(buffer)) throw new Error('không phải ảnh JPEG/PNG/WEBP');
+  return buffer;
+}
+
+/** Tải ảnh nguồn rồi upload lên Cloudinary với tên cố định → chạy lại/--reset không sinh ảnh trùng. */
+const cloudinaryResolver: DemoImageResolver = async ({ folder, name, source }) => {
+  const buffer = await downloadImage(wikimediaImageUrl(source));
+  const uploaded = await uploadImage(buffer, folder, { publicId: name });
+  return { url: uploaded.url, publicId: uploaded.publicId };
+};
+
+/** Lưu thẳng URL nguồn (không có publicId → API sẽ không bao giờ xoá ảnh này trên Cloudinary). */
+const linkResolver: DemoImageResolver = async ({ source }) => ({
+  url: wikimediaImageUrl(source),
+  publicId: null,
+});
+
+interface ImageJob {
+  target: DemoImageTarget;
+  /** Ghi ảnh vào DB nếu chỗ đó vẫn chưa có ảnh; trả `true` nếu đã ghi. */
+  apply: (image: IImage) => Promise<boolean>;
+}
+
+/** Các chỗ có ảnh nhưng đang trống (không ghi đè ảnh người dùng đã đặt). */
+async function collectImageJobs(): Promise<ImageJob[]> {
+  const jobs: ImageJob[] = [];
+
+  const settings = await getSettings();
+  // Chỉ gắn logo/ảnh bìa cho nhà hàng demo (không đụng nhà hàng thật đã đổi tên).
+  if (settings.name === DEMO_RESTAURANT_NAME) {
+    for (const field of ['logo', 'coverImage'] as const) {
+      if (settings[field]) continue;
+      jobs.push({
+        target: {
+          folder: 'restaurant',
+          name: `demo-${field === 'logo' ? 'logo' : 'cover'}`,
+          source: DEMO_RESTAURANT_IMAGES[field],
+        },
+        apply: async (image) =>
+          (
+            await RestaurantSettings.updateOne(
+              { key: 'default', [field]: null },
+              { $set: { [field]: image } },
+            )
+          ).modifiedCount > 0,
+      });
+    }
+  }
+
+  const categories = await Category.find(
+    { slug: { $in: Object.keys(DEMO_CATEGORY_IMAGES) }, image: null },
+    { slug: 1 },
+  ).lean();
+  for (const category of categories) {
+    jobs.push({
+      target: {
+        folder: 'categories',
+        name: `demo-${category.slug}`,
+        source: DEMO_CATEGORY_IMAGES[category.slug]!,
+      },
+      apply: async (image) =>
+        (await Category.updateOne({ _id: category._id, image: null }, { $set: { image } }))
+          .modifiedCount > 0,
+    });
+  }
+
+  const items = await MenuItem.find(
+    { slug: { $in: Object.keys(DEMO_MENU_ITEM_IMAGES) }, image: null },
+    { slug: 1 },
+  ).lean();
+  for (const item of items) {
+    jobs.push({
+      target: {
+        folder: 'menu-items',
+        name: `demo-${item.slug}`,
+        source: DEMO_MENU_ITEM_IMAGES[item.slug]!,
+      },
+      apply: async (image) =>
+        (await MenuItem.updateOne({ _id: item._id, image: null }, { $set: { image } }))
+          .modifiedCount > 0,
+    });
+  }
+  return jobs;
+}
+
+async function seedImages(
+  mode: DemoImageMode,
+  customResolver: DemoImageResolver | undefined,
+): Promise<SeedDemoResult['images']> {
+  if (mode === 'skip') return { mode: 'skipped', applied: 0, failed: 0 };
+  const useCloudinary = !customResolver && mode === 'auto' && isCloudinaryConfigured();
+  const resolve = customResolver ?? (useCloudinary ? cloudinaryResolver : linkResolver);
+
+  const jobs = await collectImageJobs();
+  let applied = 0;
+  let failed = 0;
+  let next = 0;
+  const worker = async () => {
+    while (next < jobs.length) {
+      const job = jobs[next++]!;
+      try {
+        if (await job.apply(await resolve(job.target))) applied += 1;
+      } catch (err) {
+        failed += 1;
+        logger.warn(
+          `Không gắn được ảnh ${job.target.folder}/${job.target.name}: ` +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(IMAGE_CONCURRENCY, jobs.length) }, worker));
+  return { mode: useCloudinary ? 'cloudinary' : 'link', applied, failed };
 }
 
 // ------------------------------------------------------------------ Lịch sử phiên / đơn / thanh toán
@@ -890,23 +1062,32 @@ export async function seedDemo(options: SeedDemoOptions = {}): Promise<SeedDemoR
   const { categories, menuItems } = await seedMenu();
   const staff = await seedStaff(password);
   const history = await seedHistory(now);
+  const images = await seedImages(options.images ?? 'auto', options.resolveImage);
 
   return {
     reset,
     settingsApplied,
     created: { areas, tables, categories, menuItems, staff },
     history,
+    images,
   };
 }
 
-const cliSchema = z.object({ reset: z.boolean(), yes: z.boolean() });
+const CLI_FLAGS = ['--reset', '--yes', '--no-images'];
+const cliSchema = z.object({ reset: z.boolean(), yes: z.boolean(), images: z.boolean() });
 
 export function parseSeedDemoArgs(argv: string[]): z.infer<typeof cliSchema> {
-  const unknown = argv.filter((arg) => !['--reset', '--yes'].includes(arg));
+  const unknown = argv.filter((arg) => !CLI_FLAGS.includes(arg));
   if (unknown.length > 0) {
-    throw new Error(`Tham số không hợp lệ: ${unknown.join(' ')} (chỉ hỗ trợ --reset, --yes)`);
+    throw new Error(
+      `Tham số không hợp lệ: ${unknown.join(' ')} (chỉ hỗ trợ ${CLI_FLAGS.join(', ')})`,
+    );
   }
-  return cliSchema.parse({ reset: argv.includes('--reset'), yes: argv.includes('--yes') });
+  return cliSchema.parse({
+    reset: argv.includes('--reset'),
+    yes: argv.includes('--yes'),
+    images: !argv.includes('--no-images'),
+  });
 }
 
 async function main(): Promise<void> {
@@ -918,8 +1099,8 @@ async function main(): Promise<void> {
   }
   await connectDatabase();
   try {
-    const result = await seedDemo({ reset: args.reset });
-    const { created, history } = result;
+    const result = await seedDemo({ reset: args.reset, images: args.images ? 'auto' : 'skip' });
+    const { created, history, images } = result;
     if (result.reset) logger.warn('Đã xoá dữ liệu nghiệp vụ cũ (--reset)');
     logger.info(
       result.settingsApplied
@@ -937,6 +1118,19 @@ async function main(): Promise<void> {
       );
     } else {
       logger.warn('Đã có phiên/đơn/thanh toán — bỏ qua sinh lịch sử (dùng --reset để tạo lại)');
+    }
+    if (images.mode === 'skipped') {
+      logger.info('Bỏ qua ảnh (--no-images)');
+    } else {
+      logger.info(
+        `Ảnh: gắn ${images.applied} ảnh ` +
+          (images.mode === 'cloudinary'
+            ? '(đã upload lên Cloudinary)'
+            : '(lưu URL Wikimedia — chưa cấu hình Cloudinary)'),
+      );
+      if (images.failed > 0) {
+        logger.warn(`${images.failed} ảnh lỗi — chạy lại seed:demo để thử lại`);
+      }
     }
     if (created.staff > 0) {
       logger.info(

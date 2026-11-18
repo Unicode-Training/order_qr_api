@@ -67,6 +67,7 @@ npm run seed:admin
 ```bash
 npm run seed:demo              # idempotent: chỉ thêm phần còn thiếu, không ghi đè dữ liệu đã có
 npm run seed:demo -- --reset   # XOÁ dữ liệu nghiệp vụ rồi seed lại (production: cần thêm --yes)
+npm run seed:demo -- --no-images  # không gắn ảnh (vd. máy không có mạng)
 ```
 
 Tạo dữ liệu mẫu theo thiết kế cho nhà hàng **Le Bistro & Grill** trên `DATABASE_URL`:
@@ -75,8 +76,9 @@ Tạo dữ liệu mẫu theo thiết kế cho nhà hàng **Le Bistro & Grill** t
 - 3 khu vực, 20 bàn (`A01–A08` sảnh, `V01–V06` VIP, `S01–S06` sân vườn), 5 danh mục, 22 món giá VND (có món nhiều lựa chọn như mức chín bít tết, size pizza; 1 món đang hết).
 - 4 tài khoản nhân viên `minhanh|quocbao|thuha|duclong@lebistro.example`, mật khẩu `SEED_DEMO_PASSWORD` (mặc định `Demo@123456`). Không có vai trò — ai đăng nhập cũng toàn quyền. Tài khoản đã tồn tại không bị đổi mật khẩu.
 - Lịch sử 14 ngày + hôm nay: ~200 phiên đã thanh toán, ~300 đơn (ngày cuối tuần đông hơn, giờ cao điểm trưa/tối) để dashboard có số liệu; 5 bàn đang có khách (đơn ở các trạng thái pending → served, 1 bàn đã yêu cầu thanh toán, vài yêu cầu nhanh đang chờ) và 1 bàn `reserved`. Dữ liệu sinh bằng PRNG có seed cố định, tính tiền bằng `calculateBillTotals` như luồng thật, số đơn `ORD-xxxx` liên tục với bộ đếm theo ngày.
+- Ảnh cho mọi tài nguyên có ảnh: logo + ảnh bìa nhà hàng, 5 danh mục, 22 món (`src/scripts/demoImages.ts`, nguồn Wikimedia Commons giấy phép mở — CC0/PD/CC BY/CC BY-SA, chỉ dùng cho demo). Có `CLOUDINARY_*` → tải ảnh về rồi upload vào `<CLOUDINARY_FOLDER>/{restaurant,categories,menu-items}/demo-<slug>` (tên cố định, `overwrite: false` → chạy lại/`--reset` không sinh ảnh trùng); chưa cấu hình → lưu thẳng URL Wikimedia (`publicId: null`). Chỉ điền chỗ đang **trống** (không ghi đè ảnh đã đặt); logo/ảnh bìa chỉ gắn khi tên nhà hàng là `Le Bistro & Grill`. Ảnh lỗi (mạng, Cloudinary) chỉ ghi cảnh báo, chạy lại seed sẽ thử lại.
 - Chạy lại không `--reset`: danh mục/bàn/món/tài khoản thiếu thì thêm; lịch sử chỉ sinh khi DB **chưa có** phiên/đơn/thanh toán nào.
-- `--reset` xoá: khu vực, bàn, danh mục, món, phiên, đơn, bộ đếm đơn, thanh toán, yêu cầu nhanh, cài đặt nhà hàng và tài khoản demo. **Giữ** các tài khoản khác (vd. tài khoản từ `seed:admin`). Ảnh Cloudinary của món cũ (nếu có) không bị xoá.
+- `--reset` xoá: khu vực, bàn, danh mục, món, phiên, đơn, bộ đếm đơn, thanh toán, yêu cầu nhanh, cài đặt nhà hàng và tài khoản demo. **Giữ** các tài khoản khác (vd. tài khoản từ `seed:admin`). Ảnh trên Cloudinary không bị xoá (ảnh `demo-*` được dùng lại khi seed lại).
 
 - Health check: `GET http://localhost:4000/api/v1/health` (trả `503` nếu mất kết nối DB)
 - Swagger UI: `http://localhost:4000/api/docs` (JSON: `/api/docs.json`)
