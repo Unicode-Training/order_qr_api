@@ -13,7 +13,13 @@ import { getSettings, patchSettings } from '../src/modules/settings/settings.ser
 import { Table } from '../src/modules/tables/table.model';
 import { User } from '../src/modules/users/user.model';
 import {
+  DEMO_CATEGORY_IMAGES,
+  DEMO_MENU_ITEM_IMAGES,
+  wikimediaImageUrl,
+} from '../src/scripts/demoImages';
+import {
   DEFAULT_DEMO_PASSWORD,
+  DEMO_CATEGORIES,
   DEMO_MENU_ITEMS,
   DEMO_RESTAURANT_NAME,
   DEMO_STAFF,
@@ -30,8 +36,13 @@ const NOW = new Date('2026-11-18T07:00:00.000Z');
 
 describe('parseSeedDemoArgs', () => {
   it('nhận --reset/--yes, từ chối tham số lạ', () => {
-    expect(parseSeedDemoArgs([])).toEqual({ reset: false, yes: false });
-    expect(parseSeedDemoArgs(['--reset', '--yes'])).toEqual({ reset: true, yes: true });
+    expect(parseSeedDemoArgs([])).toEqual({ reset: false, yes: false, images: true });
+    expect(parseSeedDemoArgs(['--reset', '--yes'])).toEqual({
+      reset: true,
+      yes: true,
+      images: true,
+    });
+    expect(parseSeedDemoArgs(['--no-images'])).toMatchObject({ images: false });
     expect(() => parseSeedDemoArgs(['--force'])).toThrow(/--force/);
   });
 });
@@ -149,5 +160,82 @@ describe('seedDemo', () => {
     // Đơn mới hôm nay tiếp nối bộ đếm (không trùng unique businessDate+orderNumber)
     const todayCount = await Order.countDocuments({ businessDate: today });
     expect(await nextOrderNumber(today)).toBe(`ORD-${String(todayCount + 1).padStart(4, '0')}`);
+  });
+
+  it('gắn ảnh cho mọi tài nguyên có ảnh (không cấu hình Cloudinary → lưu URL nguồn)', async () => {
+    const result = await seedDemo({ now: NOW });
+    const expected = 2 + DEMO_CATEGORIES.length + DEMO_MENU_ITEMS.length;
+    expect(result.images).toEqual({ mode: 'link', applied: expected, failed: 0 });
+
+    const settings = await getSettings();
+    expect(settings.logo).toEqual({ url: expect.stringMatching(/^https:\/\//), publicId: null });
+    expect(settings.coverImage?.url).toMatch(/^https:\/\/upload\.wikimedia\.org\//);
+    for (const category of await Category.find().lean()) {
+      expect(category.image?.url).toBe(wikimediaImageUrl(DEMO_CATEGORY_IMAGES[category.slug]!));
+    }
+    for (const item of await MenuItem.find().lean()) {
+      expect(item.image?.url).toBe(wikimediaImageUrl(DEMO_MENU_ITEM_IMAGES[item.slug]!));
+      expect(item.image?.publicId).toBeNull();
+    }
+
+    // API khách thấy ảnh (không lộ publicId)
+    const app = createApp();
+    const menu = await supertest(app).get('/api/v1/public/menu');
+    const firstItem = JSON.stringify(menu.body.data);
+    expect(firstItem).toContain('upload.wikimedia.org');
+    expect(firstItem).not.toContain('publicId');
+    const restaurant = await supertest(app).get('/api/v1/public/restaurant');
+    expect(restaurant.body.data.logo.url).toBe(settings.logo!.url);
+
+    // Chạy lại: không gắn thêm
+    expect((await seedDemo({ now: NOW })).images.applied).toBe(0);
+  });
+
+  it('mỗi món/danh mục demo đều có nguồn ảnh, URL Wikimedia đúng định dạng', () => {
+    for (const def of DEMO_CATEGORIES) expect(DEMO_CATEGORY_IMAGES[def.slug]).toBeDefined();
+    for (const def of DEMO_MENU_ITEMS) expect(DEMO_MENU_ITEM_IMAGES[def.slug]).toBeDefined();
+    expect(wikimediaImageUrl({ file: 'Tiramisu dessert.jpg', license: 'x' })).toBe(
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Tiramisu_dessert.jpg/960px-Tiramisu_dessert.jpg',
+    );
+    expect(wikimediaImageUrl({ file: 'Gỏi cuốn.jpg', license: 'x', width: null })).toBe(
+      'https://upload.wikimedia.org/wikipedia/commons/9/90/G%E1%BB%8Fi_cu%E1%BB%91n.jpg',
+    );
+  });
+
+  it('không ghi đè ảnh đã có, bỏ qua nhà hàng không phải demo, ảnh lỗi để null rồi thử lại', async () => {
+    await seedDemo({ now: NOW, images: 'skip' });
+    const custom = { url: 'https://example.com/my-tiramisu.jpg', publicId: null };
+    await MenuItem.updateOne({ slug: 'tiramisu' }, { $set: { image: custom } });
+    await patchSettings({ name: 'Quán của tôi' });
+
+    const result = await seedDemo({
+      now: NOW,
+      resolveImage: async (target) => {
+        if (target.name === 'demo-pizza-margherita') throw new Error('mạng lỗi');
+        return { url: `https://cdn.example/${target.folder}/${target.name}.jpg`, publicId: null };
+      },
+    });
+    // không có logo/ảnh bìa (đã đổi tên), bỏ tiramisu (có ảnh), pizza lỗi
+    expect(result.images).toEqual({
+      mode: 'link',
+      applied: DEMO_CATEGORIES.length + DEMO_MENU_ITEMS.length - 2,
+      failed: 1,
+    });
+    expect((await MenuItem.findOne({ slug: 'tiramisu' }).lean())!.image).toEqual(custom);
+    expect((await MenuItem.findOne({ slug: 'pizza-margherita' }).lean())!.image).toBeNull();
+    expect((await getSettings()).logo).toBeNull();
+    expect((await Category.findOne({ slug: 'khai-vi' }).lean())!.image?.url).toBe(
+      'https://cdn.example/categories/demo-khai-vi.jpg',
+    );
+
+    const retry = await seedDemo({ now: NOW, images: 'link' });
+    expect(retry.images).toEqual({ mode: 'link', applied: 1, failed: 0 });
+  });
+
+  it("images: 'skip' không gắn ảnh", async () => {
+    const result = await seedDemo({ now: NOW, images: 'skip' });
+    expect(result.images).toEqual({ mode: 'skipped', applied: 0, failed: 0 });
+    expect(await MenuItem.countDocuments({ image: { $ne: null } })).toBe(0);
+    expect((await getSettings()).logo).toBeNull();
   });
 });
