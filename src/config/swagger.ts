@@ -1,6 +1,7 @@
 import path from 'node:path';
 import swaggerJsdoc from 'swagger-jsdoc';
 import { menuSchemas } from './swagger.menu';
+import { dashboardSchemas } from './swagger.dashboard';
 import { paymentSchemas } from './swagger.payments';
 import {
   guestOrderResponses,
@@ -280,6 +281,10 @@ export const swaggerSpec = swaggerJsdoc({
         name: 'Payments',
         description: 'Hoá đơn, ghi nhận thanh toán thủ công, đóng / chuyển / huỷ phiên bàn',
       },
+      {
+        name: 'Dashboard',
+        description: 'Tổng quan quản trị: doanh thu, đơn hàng, món bán chạy (giờ Asia/Ho_Chi_Minh)',
+      },
     ],
     components: {
       securitySchemes: {
@@ -356,6 +361,7 @@ export const swaggerSpec = swaggerJsdoc({
         ...guestOrderSchemas,
         ...staffSchemas,
         ...paymentSchemas,
+        ...dashboardSchemas,
         PaginationMeta: {
           type: 'object',
           properties: {
