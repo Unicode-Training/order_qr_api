@@ -162,6 +162,76 @@ const restaurantSchemas = {
   },
 };
 
+const tableSchemas = {
+  Area: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', example: '665f1c2e8b3a4d0012345678' },
+      name: { type: 'string', example: 'Tầng 1 - Sảnh chính' },
+      sortOrder: { type: 'integer', example: 1 },
+      tableCount: { type: 'integer', example: 12, description: 'Số bàn thuộc khu vực' },
+      createdAt: { type: 'string', format: 'date-time' },
+      updatedAt: { type: 'string', format: 'date-time' },
+    },
+  },
+  AreaInput: {
+    type: 'object',
+    required: ['name'],
+    properties: {
+      name: { type: 'string', maxLength: 100, example: 'Tầng 1 - Sảnh chính' },
+      sortOrder: { type: 'integer', default: 0, description: 'Thứ tự hiển thị (tăng dần)' },
+    },
+  },
+  TableStatus: {
+    type: 'string',
+    enum: ['available', 'occupied', 'needs_payment', 'reserved'],
+    description:
+      'available = trống, occupied = đang phục vụ, needs_payment = chờ thanh toán, reserved = đã đặt trước',
+  },
+  TableAreaRef: {
+    type: 'object',
+    nullable: true,
+    properties: {
+      id: { type: 'string' },
+      name: { type: 'string', example: 'Tầng 1 - Sảnh chính' },
+    },
+  },
+  Table: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', example: '665f1c2e8b3a4d0012345678' },
+      code: { type: 'string', example: 'B08' },
+      name: { type: 'string', example: 'Bàn 08' },
+      areaId: { type: 'string', nullable: true },
+      area: { $ref: '#/components/schemas/TableAreaRef' },
+      capacity: { type: 'integer', example: 4 },
+      isActive: { type: 'boolean', example: true },
+      status: { $ref: '#/components/schemas/TableStatus' },
+      qrToken: { type: 'string', example: 'q1Wm2cZ0p8yH3nVt6Ra9LbXe4KdUs7Gf' },
+      qrUrl: {
+        type: 'string',
+        format: 'uri',
+        example: 'http://localhost:3000/t/q1Wm2cZ0p8yH3nVt6Ra9LbXe4KdUs7Gf',
+        description: 'Nội dung mã QR',
+      },
+      qrTokenUpdatedAt: { type: 'string', format: 'date-time' },
+      createdAt: { type: 'string', format: 'date-time' },
+      updatedAt: { type: 'string', format: 'date-time' },
+    },
+  },
+  TableStats: {
+    type: 'object',
+    properties: {
+      total: { type: 'integer', example: 20, description: 'Tổng bàn đang hoạt động' },
+      occupied: { type: 'integer', example: 8, description: 'Đang phục vụ' },
+      available: { type: 'integer', example: 10, description: 'Trống' },
+      needsPayment: { type: 'integer', example: 2, description: 'Chờ thanh toán' },
+      reserved: { type: 'integer', example: 0 },
+      inactive: { type: 'integer', example: 1, description: 'Bàn đã tắt (không tính vào total)' },
+    },
+  },
+};
+
 /**
  * Tài liệu OpenAPI được sinh từ các comment `@openapi` trong file *.routes.ts của từng module.
  * Các task sau chỉ cần thêm comment `@openapi` vào routes của module mới.
@@ -184,6 +254,9 @@ export const swaggerSpec = swaggerJsdoc({
       },
       { name: 'Settings', description: 'Cài đặt nhà hàng (singleton)' },
       { name: 'Restaurant', description: 'Thông tin nhà hàng công khai cho khách' },
+      { name: 'Areas', description: 'Khu vực / tầng của nhà hàng' },
+      { name: 'Tables', description: 'Quản lý bàn ăn và mã QR gọi món tại bàn' },
+      { name: 'Public Tables', description: 'Khách quét mã QR tại bàn' },
       { name: 'Categories', description: 'Quản lý danh mục món' },
       { name: 'MenuItems', description: 'Quản lý món ăn, còn/hết món' },
       { name: 'Uploads', description: 'Upload ảnh lên Cloudinary' },
@@ -257,6 +330,7 @@ export const swaggerSpec = swaggerJsdoc({
           properties: { refreshToken: { type: 'string' } },
         },
         ...restaurantSchemas,
+        ...tableSchemas,
         ...menuSchemas,
         PaginationMeta: {
           type: 'object',
