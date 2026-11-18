@@ -20,17 +20,23 @@ Sau đó mở `.env` và điền các giá trị (đặc biệt là `DATABASE_UR
 
 Tất cả biến được validate bằng zod khi khởi động (`src/config/env.ts`); nếu thiếu hoặc sai, server sẽ dừng và in ra danh sách lỗi.
 
-| Biến                  | Bắt buộc | Mô tả                                                                              | Ví dụ                                |
-| --------------------- | -------- | ---------------------------------------------------------------------------------- | ------------------------------------ |
-| `PORT`                | Không    | Cổng HTTP (mặc định `4000`)                                                        | `4000`                               |
-| `NODE_ENV`            | Không    | `development` \| `production` \| `test` (mặc định `development`)                   | `development`                        |
-| `DATABASE_URL`        | **Có**   | Chuỗi kết nối MongoDB (`mongodb://` hoặc `mongodb+srv://`)                         | `mongodb://localhost:27017/order-qr` |
-| `JWT_ACCESS_SECRET`   | **Có**   | Secret ký access token, tối thiểu 32 ký tự                                         | chuỗi ngẫu nhiên                     |
-| `JWT_REFRESH_SECRET`  | **Có**   | Secret ký refresh token, tối thiểu 32 ký tự                                        | chuỗi ngẫu nhiên                     |
-| `JWT_ACCESS_EXPIRES`  | Không    | Thời hạn access token (mặc định `15m`)                                             | `15m`                                |
-| `JWT_REFRESH_EXPIRES` | Không    | Thời hạn refresh token (mặc định `7d`)                                             | `7d`                                 |
-| `CLIENT_URL`          | **Có**   | URL web dành cho khách, được in vào mã QR                                          | `http://localhost:3000`              |
-| `CORS_ORIGINS`        | Không    | Danh sách origin cho phép, cách nhau bởi dấu phẩy; rỗng hoặc `*` = cho phép tất cả | `http://localhost:3000`              |
+| Biến                              | Bắt buộc | Mô tả                                                                              | Ví dụ                                |
+| --------------------------------- | -------- | ---------------------------------------------------------------------------------- | ------------------------------------ |
+| `PORT`                            | Không    | Cổng HTTP (mặc định `4000`)                                                        | `4000`                               |
+| `NODE_ENV`                        | Không    | `development` \| `production` \| `test` (mặc định `development`)                   | `development`                        |
+| `DATABASE_URL`                    | **Có**   | Chuỗi kết nối MongoDB (`mongodb://` hoặc `mongodb+srv://`)                         | `mongodb://localhost:27017/order-qr` |
+| `JWT_ACCESS_SECRET`               | **Có**   | Secret ký access token, tối thiểu 32 ký tự                                         | chuỗi ngẫu nhiên                     |
+| `JWT_REFRESH_SECRET`              | **Có**   | Secret ký refresh token, tối thiểu 32 ký tự                                        | chuỗi ngẫu nhiên                     |
+| `JWT_ACCESS_EXPIRES`              | Không    | Thời hạn access token (mặc định `15m`)                                             | `15m`                                |
+| `JWT_REFRESH_EXPIRES`             | Không    | Thời hạn refresh token (mặc định `7d`)                                             | `7d`                                 |
+| `BCRYPT_SALT_ROUNDS`              | Không    | Số vòng băm bcrypt (4-15, mặc định `10`)                                           | `10`                                 |
+| `LOGIN_RATE_LIMIT_MAX`            | Không    | Số lần đăng nhập **thất bại** tối đa / IP trong một cửa sổ (mặc định `10`)         | `10`                                 |
+| `LOGIN_RATE_LIMIT_WINDOW_MINUTES` | Không    | Độ dài cửa sổ rate limit đăng nhập, phút (mặc định `15`)                           | `15`                                 |
+| `SEED_ADMIN_EMAIL`                | Seed     | Email tài khoản đầu tiên (chỉ dùng cho `npm run seed:admin`)                       | `admin@example.com`                  |
+| `SEED_ADMIN_PASSWORD`             | Seed     | Mật khẩu tài khoản đầu tiên (8-72 ký tự)                                           | chuỗi mạnh                           |
+| `SEED_ADMIN_FULLNAME`             | Không    | Họ tên tài khoản đầu tiên (mặc định `Quản trị viên`)                               | `Chủ quán`                           |
+| `CLIENT_URL`                      | **Có**   | URL web dành cho khách, được in vào mã QR                                          | `http://localhost:3000`              |
+| `CORS_ORIGINS`                    | Không    | Danh sách origin cho phép, cách nhau bởi dấu phẩy; rỗng hoặc `*` = cho phép tất cả | `http://localhost:3000`              |
 
 Tạo secret ngẫu nhiên: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
 
@@ -40,6 +46,12 @@ Tạo secret ngẫu nhiên: `node -e "console.log(require('crypto').randomBytes(
 npm run dev      # chạy dev với tsx watch (tự reload)
 npm run build    # biên dịch TypeScript ra dist/
 npm start        # chạy bản build (dist/server.js)
+```
+
+Tạo tài khoản đầu tiên (đọc `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` trong `.env`; chạy lại nhiều lần an toàn — email đã tồn tại thì bỏ qua, không đổi mật khẩu):
+
+```bash
+npm run seed:admin
 ```
 
 - Health check: `GET http://localhost:4000/api/v1/health` (trả `503` nếu mất kết nối DB)
@@ -111,4 +123,6 @@ Lỗi:
 - Ném lỗi nghiệp vụ bằng `AppError` (ví dụ `throw AppError.notFound('Không tìm thấy món')`); Express 5 tự bắt lỗi từ handler async.
 - Validate request: `router.post('/', validate({ body: createSchema, query, params }), controller)`.
 - Phân trang: `paginationQuerySchema` + `getPaginationOptions(req.query, { allowedSortFields })` + `buildPaginationMeta(total, page, limit)`; sort dạng `?sort=-createdAt,name`.
+- Xác thực: `POST /api/v1/auth/login` → `accessToken` (Bearer, `JWT_ACCESS_EXPIRES`) + `refreshToken` (`JWT_REFRESH_EXPIRES`). Refresh token xoay vòng (dùng 1 lần), DB chỉ lưu SHA-256 (collection `refreshtokens`).
+- **Không phân quyền theo vai trò**: mọi route dưới `/api/v1/admin/*` đều qua middleware `authenticate` (đăng ký sẵn trong `src/routes.ts`), mọi tài khoản đăng nhập đều có toàn quyền. Route cho khách đặt dưới `/api/v1/public/*` (không cần đăng nhập). Lấy user hiện tại trong controller: `getAuthUser(req)`.
 - Tài liệu API: thêm comment `@openapi` trong `*.routes.ts`, Swagger tự quét.

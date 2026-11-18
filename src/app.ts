@@ -5,7 +5,7 @@ import swaggerUi from 'swagger-ui-express';
 import { env } from './config/env';
 import { swaggerSpec } from './config/swagger';
 import { errorHandler, notFoundHandler, requestLogger } from './middlewares';
-import apiRoutes from './routes';
+import { createApiRouter } from './routes';
 
 function buildCorsOptions(): CorsOptions {
   const origins = env.CORS_ORIGINS;
@@ -39,7 +39,7 @@ export function createApp(): Express {
     swaggerUi.setup(swaggerSpec, { customSiteTitle: 'Order QR API Docs' }),
   );
 
-  app.use('/api/v1', apiRoutes);
+  app.use('/api/v1', createApiRouter());
 
   app.use(notFoundHandler);
   app.use(errorHandler);

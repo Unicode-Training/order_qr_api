@@ -5,6 +5,7 @@ export const ErrorCode = {
   FORBIDDEN: 'FORBIDDEN',
   NOT_FOUND: 'NOT_FOUND',
   CONFLICT: 'CONFLICT',
+  TOO_MANY_REQUESTS: 'TOO_MANY_REQUESTS',
   SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const;
@@ -46,6 +47,10 @@ export class AppError extends Error {
 
   static conflict(message = 'Dữ liệu bị trùng lặp', details?: unknown) {
     return new AppError(409, ErrorCode.CONFLICT, message, details);
+  }
+
+  static tooManyRequests(message = 'Quá nhiều yêu cầu, vui lòng thử lại sau', details?: unknown) {
+    return new AppError(429, ErrorCode.TOO_MANY_REQUESTS, message, details);
   }
 
   static serviceUnavailable(message = 'Dịch vụ tạm thời không khả dụng', details?: unknown) {

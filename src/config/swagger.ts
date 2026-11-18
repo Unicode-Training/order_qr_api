@@ -14,9 +14,37 @@ export const swaggerSpec = swaggerJsdoc({
       description: 'API đặt món qua mã QR',
     },
     servers: [{ url: '/api/v1' }],
+    tags: [
+      { name: 'Health' },
+      { name: 'Auth', description: 'Đăng nhập JWT (access + refresh token)' },
+      {
+        name: 'Users',
+        description: 'Quản lý tài khoản nhân viên — mọi tài khoản đăng nhập đều có toàn quyền',
+      },
+    ],
     components: {
       securitySchemes: {
         bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+      },
+      responses: {
+        Unauthorized: {
+          description: 'Chưa đăng nhập / token không hợp lệ hoặc hết hạn',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+        ValidationError: {
+          description: 'Dữ liệu không hợp lệ',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+        NotFound: {
+          description: 'Không tìm thấy',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
       },
       schemas: {
         ErrorResponse: {
@@ -33,6 +61,33 @@ export const swaggerSpec = swaggerJsdoc({
               required: ['code', 'message'],
             },
           },
+        },
+        User: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: '665f1c2e8b3a4d0012345678' },
+            fullName: { type: 'string', example: 'Nguyễn Văn A' },
+            email: { type: 'string', format: 'email', example: 'nhanvien@example.com' },
+            isActive: { type: 'boolean', example: true },
+            lastLoginAt: { type: 'string', format: 'date-time', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        AuthTokens: {
+          type: 'object',
+          properties: {
+            tokenType: { type: 'string', example: 'Bearer' },
+            accessToken: { type: 'string' },
+            accessTokenExpiresAt: { type: 'string', format: 'date-time' },
+            refreshToken: { type: 'string' },
+            refreshTokenExpiresAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        RefreshTokenBody: {
+          type: 'object',
+          required: ['refreshToken'],
+          properties: { refreshToken: { type: 'string' } },
         },
         PaginationMeta: {
           type: 'object',
