@@ -57,6 +57,9 @@ function normalizeError(err: unknown): AppError {
     if (err.type === 'entity.parse.failed') {
       return AppError.badRequest('Body JSON không hợp lệ');
     }
+    if (err.type === 'entity.too.large') {
+      return new AppError(413, 'PAYLOAD_TOO_LARGE', 'Dữ liệu gửi lên quá lớn');
+    }
     if (err.status >= 400 && err.status < 500) {
       const message = hasProp(err, 'message') ? String(err.message) : 'Yêu cầu không hợp lệ';
       return new AppError(err.status, ErrorCode.BAD_REQUEST, message);

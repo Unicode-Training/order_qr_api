@@ -38,6 +38,7 @@ Tất cả biến được validate bằng zod khi khởi động (`src/config/e
 | `SEED_ADMIN_EMAIL`                 | Seed     | Email tài khoản đầu tiên (chỉ dùng cho `npm run seed:admin`)                                            | `admin@example.com`                  |
 | `SEED_ADMIN_PASSWORD`              | Seed     | Mật khẩu tài khoản đầu tiên (8-72 ký tự)                                                                | chuỗi mạnh                           |
 | `SEED_ADMIN_FULLNAME`              | Không    | Họ tên tài khoản đầu tiên (mặc định `Quản trị viên`)                                                    | `Chủ quán`                           |
+| `SEED_DEMO_PASSWORD`               | Không    | Mật khẩu cho tài khoản nhân viên demo do `npm run seed:demo` tạo (mặc định `Demo@123456`)               | chuỗi mạnh                           |
 | `CLIENT_URL`                       | **Có**   | URL web dành cho khách, được in vào mã QR                                                               | `http://localhost:3000`              |
 | `CORS_ORIGINS`                     | Không    | Danh sách origin cho phép, cách nhau bởi dấu phẩy; rỗng hoặc `*` = cho phép tất cả                      | `http://localhost:3000`              |
 | `CLOUDINARY_CLOUD_NAME`            | Không    | Cloud name Cloudinary (để trống → API upload ảnh trả 503)                                               | `my-cloud`                           |
@@ -61,8 +62,25 @@ Tạo tài khoản đầu tiên (đọc `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWOR
 npm run seed:admin
 ```
 
+### Dữ liệu demo (`npm run seed:demo`)
+
+```bash
+npm run seed:demo              # idempotent: chỉ thêm phần còn thiếu, không ghi đè dữ liệu đã có
+npm run seed:demo -- --reset   # XOÁ dữ liệu nghiệp vụ rồi seed lại (production: cần thêm --yes)
+```
+
+Tạo dữ liệu mẫu theo thiết kế cho nhà hàng **Le Bistro & Grill** trên `DATABASE_URL`:
+
+- Cài đặt nhà hàng (giờ mở cửa 10:00–22:30, T6/T7 tới 23:30; VAT 8%, phí phục vụ 5%; tiền mặt/chuyển khoản/thẻ). Chỉ áp khi nhà hàng còn tên mặc định — không ghi đè cài đặt đã sửa.
+- 3 khu vực, 20 bàn (`A01–A08` sảnh, `V01–V06` VIP, `S01–S06` sân vườn), 5 danh mục, 22 món giá VND (có món nhiều lựa chọn như mức chín bít tết, size pizza; 1 món đang hết).
+- 4 tài khoản nhân viên `minhanh|quocbao|thuha|duclong@lebistro.example`, mật khẩu `SEED_DEMO_PASSWORD` (mặc định `Demo@123456`). Không có vai trò — ai đăng nhập cũng toàn quyền. Tài khoản đã tồn tại không bị đổi mật khẩu.
+- Lịch sử 14 ngày + hôm nay: ~200 phiên đã thanh toán, ~300 đơn (ngày cuối tuần đông hơn, giờ cao điểm trưa/tối) để dashboard có số liệu; 5 bàn đang có khách (đơn ở các trạng thái pending → served, 1 bàn đã yêu cầu thanh toán, vài yêu cầu nhanh đang chờ) và 1 bàn `reserved`. Dữ liệu sinh bằng PRNG có seed cố định, tính tiền bằng `calculateBillTotals` như luồng thật, số đơn `ORD-xxxx` liên tục với bộ đếm theo ngày.
+- Chạy lại không `--reset`: danh mục/bàn/món/tài khoản thiếu thì thêm; lịch sử chỉ sinh khi DB **chưa có** phiên/đơn/thanh toán nào.
+- `--reset` xoá: khu vực, bàn, danh mục, món, phiên, đơn, bộ đếm đơn, thanh toán, yêu cầu nhanh, cài đặt nhà hàng và tài khoản demo. **Giữ** các tài khoản khác (vd. tài khoản từ `seed:admin`). Ảnh Cloudinary của món cũ (nếu có) không bị xoá.
+
 - Health check: `GET http://localhost:4000/api/v1/health` (trả `503` nếu mất kết nối DB)
 - Swagger UI: `http://localhost:4000/api/docs` (JSON: `/api/docs.json`)
+- File OpenAPI tĩnh: [`docs/openapi.json`](docs/openapi.json) — sinh lại bằng `npm run docs:openapi` mỗi khi đổi route/comment `@openapi` (`npm run docs:openapi -- --check` để kiểm tra; test `tests/openapi.test.ts` cũng báo lỗi nếu file lệch với code).
 
 ## Kiểm thử & chất lượng mã
 
@@ -73,6 +91,8 @@ npm run lint         # ESLint
 npm run format       # Prettier (ghi file); format:check để chỉ kiểm tra
 npm run typecheck
 ```
+
+Ngoài test từng module, `tests/e2e.test.ts` chạy trọn luồng qua HTTP: admin tạo món & bàn → khách quét QR → mở phiên → đặt món → nhân viên xác nhận → bếp chuẩn bị → phục vụ → khách yêu cầu thanh toán → thu tiền → bàn trống → dashboard có doanh thu. `tests/openapi.test.ts` kiểm tra spec (mọi route có tài liệu, security đúng nhóm), `tests/hardening.test.ts` kiểm tra bảo mật HTTP, `tests/seed-demo.test.ts` kiểm tra seed.
 
 Test dùng MongoDB in-memory (`mongodb-memory-server`), không cần DB thật. Lần chạy đầu tiên sẽ tải binary MongoDB (cần mạng). Biến môi trường cho test được đặt sẵn trong `tests/setup-env.ts`.
 
@@ -89,16 +109,17 @@ it('...', async () => {
 });
 ```
 
-## Cấu trúc thư mục
+## Kiến trúc
 
 ```
 src/
-  app.ts                 # tạo Express app (không listen) — dùng cho server và test
-  server.ts              # kết nối DB rồi listen, graceful shutdown
-  routes.ts              # router /api/v1, đăng ký route các module
-  config/                # env (zod), database, swagger
-  middlewares/           # validate (zod), errorHandler, notFound, requestLogger
-  utils/                 # AppError, response helper, pagination, logger
+  app.ts                 # tạo Express app (không listen): helmet, CORS, body limit, sanitize, Swagger, router
+  server.ts              # kết nối DB rồi listen, graceful shutdown (utils/gracefulShutdown.ts)
+  routes.ts              # router /api/v1: /health, /auth, /admin/* (authenticate), /public/* (rate limit)
+  config/                # env (zod), database, swagger*.ts (schema OpenAPI dùng chung)
+  middlewares/           # validate (zod), sanitize (NoSQL injection), rateLimit, authenticate, errorHandler...
+  utils/                 # AppError, response, pagination, logger, openingHours, zonedDate, gracefulShutdown
+  scripts/               # seed-admin, seed-demo, export-openapi
   modules/<module>/
     <module>.model.ts       # Mongoose model
     <module>.schema.ts      # zod schema cho request
@@ -107,8 +128,119 @@ src/
     <module>.routes.ts      # khai báo route + comment @openapi
 tests/
   setup-env.ts           # biến môi trường cho test
-  helpers/               # db (mongodb-memory-server), app (supertest)
+  helpers/               # db (mongodb-memory-server), app (supertest), auth
+docs/openapi.json        # spec OpenAPI xuất sẵn cho frontend
 ```
+
+| Module            | Trách nhiệm                                                                                                      |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `health`          | Kiểm tra server + kết nối DB                                                                                     |
+| `auth`, `users`   | Đăng nhập JWT (access + refresh xoay vòng), quản lý tài khoản nhân viên (không phân quyền)                       |
+| `settings`        | Cài đặt nhà hàng singleton: thông tin, giờ mở cửa, VAT/phí, cấu hình gọi món, phương thức thanh toán             |
+| `areas`, `tables` | Khu vực, bàn, trạng thái bàn, mã QR (PNG/SVG/ZIP), resolve QR cho khách                                          |
+| `menu`, `uploads` | Danh mục, món (lựa chọn, còn/hết món), thực đơn công khai; upload ảnh Cloudinary                                 |
+| `sessions`        | Phiên bàn của khách (`X-Session-Token`), mỗi bàn tối đa 1 phiên chưa đóng                                        |
+| `orders`          | Đặt món/quote/huỷ của khách, điều phối đơn cho nhân viên/bếp, state machine, `pricing.ts` (tính tiền dùng chung) |
+| `serviceRequests` | Yêu cầu nhanh tại bàn (gọi nhân viên, xin nước, xin thanh toán...)                                               |
+| `payments`        | Hoá đơn, ghi nhận thanh toán thủ công, đóng/chuyển/huỷ phiên                                                     |
+| `dashboard`       | Báo cáo: doanh thu, đơn, món bán chạy, phương thức thanh toán (giờ Asia/Ho_Chi_Minh)                             |
+
+Phụ thuộc giữa module đi một chiều qua service (vd. `orders` → `settings.getPricingConfig()`, `payments` → `orders/pricing.ts`, `sessions` → `tables.setTableStatus()`); controller không gọi model của module khác.
+
+## Danh sách endpoint
+
+Tiền tố chung `/api/v1`. Chi tiết request/response: Swagger UI hoặc `docs/openapi.json`.
+
+**Công khai** (không cần đăng nhập)
+
+| Method | Path                                     | Mô tả                                               |
+| ------ | ---------------------------------------- | --------------------------------------------------- |
+| GET    | `/health`                                | Health check                                        |
+| POST   | `/auth/login`, `/auth/refresh`           | Đăng nhập, làm mới token (rate limit đăng nhập sai) |
+| POST   | `/auth/logout`                           | Thu hồi refresh token                               |
+| GET    | `/public/restaurant`                     | Thông tin nhà hàng, `isOpenNow`, `canOrderNow`      |
+| GET    | `/public/tables/resolve/:qrToken`        | Khách quét QR → bàn + nhà hàng                      |
+| GET    | `/public/menu`, `/public/menu-items/:id` | Thực đơn (lọc `search`, `category`, `tag`)          |
+| POST   | `/public/sessions`                       | Mở / tham gia phiên bàn → `sessionToken`            |
+
+**Khách đã mở phiên** (header `X-Session-Token`)
+
+| Method    | Path                                     | Mô tả                                         |
+| --------- | ---------------------------------------- | --------------------------------------------- |
+| GET/PATCH | `/public/sessions/current`               | Xem / cập nhật phiên (số khách, tên, ghi chú) |
+| GET       | `/public/sessions/current/orders`        | Đơn của phiên (`updatedSince` để polling)     |
+| POST      | `/public/sessions/current/request-bill`  | Yêu cầu thanh toán                            |
+| GET       | `/public/sessions/current/bill`          | Hoá đơn tạm tính                              |
+| POST      | `/public/orders/quote`, `/public/orders` | Báo giá giỏ hàng, đặt món                     |
+| POST      | `/public/orders/:id/cancel`              | Huỷ đơn còn `pending`                         |
+| GET/POST  | `/public/service-requests`               | Yêu cầu nhanh tại bàn                         |
+
+**Quản trị** (header `Authorization: Bearer <accessToken>`, mọi tài khoản toàn quyền)
+
+| Nhóm               | Endpoint                                                                                                                                                                                                                |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tài khoản          | `GET /auth/me`, `PATCH /auth/me/password`, `GET/POST /admin/users`, `GET/PATCH/DELETE /admin/users/:id`                                                                                                                 |
+| Cài đặt            | `GET/PUT/PATCH /admin/settings`                                                                                                                                                                                         |
+| Khu vực & bàn      | `CRUD /admin/areas`, `CRUD /admin/tables`, `GET /admin/tables/stats`, `GET /admin/tables/:id/qr`, `POST /admin/tables/:id/qr/regenerate`, `GET /admin/tables/qr/export`                                                 |
+| Thực đơn           | `CRUD /admin/categories` (+ `PATCH /reorder`), `CRUD /admin/menu-items` (+ `GET /stats`, `PATCH /reorder`, `PATCH /:id/availability`), `POST /admin/uploads`, `DELETE /admin/uploads/:publicId`                         |
+| Đơn hàng           | `GET /admin/orders`, `GET /admin/orders/board`, `GET /admin/orders/:id`, `PATCH /admin/orders/:id/status`, `PATCH /admin/orders/:id/items/:itemId`, `POST /admin/tables/:id/orders`                                     |
+| Yêu cầu nhanh      | `GET /admin/service-requests`, `PATCH /admin/service-requests/:id`                                                                                                                                                      |
+| Thanh toán & phiên | `GET /admin/tables/:id/bill`, `GET /admin/sessions/:id/bill`, `POST /admin/sessions/:id/payments`, `POST /admin/sessions/:id/move`, `POST /admin/sessions/:id/cancel`, `GET /admin/payments`, `GET /admin/payments/:id` |
+| Dashboard          | `GET /admin/dashboard/summary`, `/revenue`, `/top-items`, `/recent-orders`, `/payment-methods`                                                                                                                          |
+
+## Luồng trạng thái
+
+**Phiên bàn & bàn**
+
+```
+Khách quét QR ──POST /public/sessions──► phiên open            bàn available → occupied
+   khách gọi món, nhân viên phục vụ (có thể chuyển bàn: POST /admin/sessions/:id/move)
+Khách yêu cầu thanh toán ─────────────► phiên payment_requested bàn → needs_payment (không gọi thêm món)
+Nhân viên thu tiền (POST .../payments)► phiên closed (paid)     bàn → available, yêu cầu nhanh → done
+Nhân viên huỷ phiên trống (.../cancel)► phiên closed (cancelled) bàn → available
+```
+
+Mỗi bàn tối đa một phiên chưa đóng; khách khác quét cùng QR dùng chung phiên (cả khi `payment_requested`). Token phiên đã đóng → `401 SESSION_CLOSED`, quét lại QR để mở phiên mới. `reserved` là trạng thái bàn tuỳ chọn.
+
+**Đơn hàng**
+
+```
+pending ──► confirmed ──► preparing ──► ready ──► served
+   │            │
+   └────────────┴──► cancelled (nhân viên huỷ cần reason; khách chỉ huỷ được khi pending)
+```
+
+Nếu `settings.ordering.requireStaffConfirm = false`, đơn khách tạo ra ở `confirmed` luôn; đơn do nhân viên tạo luôn `confirmed`. Món trong đơn có `itemStatus` riêng, chỉ tiến lên hoặc huỷ (huỷ hết món → đơn `cancelled`). Thu tiền khi còn đơn `pending/confirmed/preparing` → `409 UNFINISHED_ORDERS` (trừ khi `force: true`).
+
+**Yêu cầu nhanh**: `pending → acknowledged → done` (hoặc `pending → done`); đóng phiên tự chuyển mọi yêu cầu còn mở sang `done`.
+
+## Hướng dẫn polling cho frontend
+
+API không có WebSocket; frontend polling định kỳ với `updatedSince` để chỉ nhận dữ liệu thay đổi:
+
+1. Lần đầu gọi **không** có `updatedSince` → nhận toàn bộ danh sách + `meta.serverTime`.
+2. Các lần sau gửi `updatedSince=<meta.serverTime của lần trước>` (ISO 8601, nhớ `encodeURIComponent`) → chỉ nhận bản ghi có `updatedAt` sau mốc đó; gộp vào state theo `id`. Luôn dùng `serverTime` của server, không dùng đồng hồ máy khách.
+3. Khi tab bị ẩn (`document.visibilityState === 'hidden'`) thì giãn chu kỳ hoặc dừng; quay lại thì gọi ngay một lần.
+
+| Màn hình                    | Endpoint                                                                   | Chu kỳ đề xuất |
+| --------------------------- | -------------------------------------------------------------------------- | -------------- |
+| Khách theo dõi đơn          | `GET /public/sessions/current/orders?updatedSince=`                        | 5–10 giây      |
+| Khách xem phiên/hoá đơn     | `GET /public/sessions/current` (phát hiện `closed` → `401 SESSION_CLOSED`) | 15–30 giây     |
+| Live Orders (nhân viên/bếp) | `GET /admin/orders?status=pending,confirmed,preparing,ready&updatedSince=` | 3–5 giây       |
+| Yêu cầu nhanh tại bàn       | `GET /admin/service-requests?status=pending,acknowledged&updatedSince=`    | 5 giây         |
+| Sơ đồ bàn                   | `GET /admin/tables/stats`, `GET /admin/tables`                             | 10–15 giây     |
+| Dashboard                   | `GET /admin/dashboard/*`                                                   | 30–60 giây     |
+
+Rate limit `/public` mặc định 600 request/phút/IP (khách cùng Wi-Fi dùng chung IP) — với chu kỳ 5 giây mỗi thiết bị tốn 12 request/phút. Khi nhận `429`, đợi theo header `Retry-After` rồi tiếp tục. Đơn bị đổi trạng thái/huỷ cũng cập nhật `updatedAt` nên sẽ có trong kết quả polling.
+
+## Bảo mật
+
+- `helmet` (CSP, nosniff, HSTS...; `Cross-Origin-Resource-Policy: cross-origin` để frontend nhúng ảnh QR). Swagger UI nới CSP riêng tại `/api/docs`.
+- CORS theo `CORS_ORIGINS` (so khớp chính xác, bỏ `/` cuối); origin lạ không nhận header `Access-Control-Allow-Origin`. Rỗng/`*` cho phép mọi origin (production sẽ log cảnh báo). Header cho phép: `Content-Type`, `Authorization`, `X-Session-Token`; frontend đọc được `RateLimit`, `Retry-After`, `Content-Disposition`.
+- Rate limit: `/public/*` theo IP; thao tác ghi của khách theo phiên bàn; đăng nhập sai theo IP.
+- Giới hạn body JSON/form `100kb` (`413 PAYLOAD_TOO_LARGE`); upload ảnh tối đa 5MB.
+- Chống NoSQL injection: middleware `sanitize` loại key bắt đầu bằng `$` hoặc chứa `.` khỏi body/query (tự viết vì `express-mongo-sanitize` không chạy với Express 5), cộng với zod validate mọi input và `mongoose.set('strictQuery', true)`.
+- Graceful shutdown: SIGINT/SIGTERM → ngừng nhận kết nối, đóng keep-alive rảnh, đợi request đang chạy (tối đa 10 giây, sau đó đóng cưỡng bức) rồi ngắt MongoDB; `unhandledRejection`/`uncaughtException` cũng tắt an toàn với mã 1.
 
 ## Quy ước API
 
@@ -132,7 +264,7 @@ Lỗi:
 - Phân trang: `paginationQuerySchema` + `getPaginationOptions(req.query, { allowedSortFields })` + `buildPaginationMeta(total, page, limit)`; sort dạng `?sort=-createdAt,name`.
 - Xác thực: `POST /api/v1/auth/login` → `accessToken` (Bearer, `JWT_ACCESS_EXPIRES`) + `refreshToken` (`JWT_REFRESH_EXPIRES`). Refresh token xoay vòng (dùng 1 lần), DB chỉ lưu SHA-256 (collection `refreshtokens`).
 - **Không phân quyền theo vai trò**: mọi route dưới `/api/v1/admin/*` đều qua middleware `authenticate` (đăng ký sẵn trong `src/routes.ts`), mọi tài khoản đăng nhập đều có toàn quyền. Route cho khách đặt dưới `/api/v1/public/*` (không cần đăng nhập). Lấy user hiện tại trong controller: `getAuthUser(req)`.
-- Tài liệu API: thêm comment `@openapi` trong `*.routes.ts`, Swagger tự quét.
+- Tài liệu API: thêm comment `@openapi` trong `*.routes.ts`, Swagger tự quét; `finalizeSpec()` (`src/config/swagger.ts`) tự bổ sung `bearerAuth` + 401 cho `/admin/*`, 429 cho `/public/*`, 413 cho route có body. Sau đó chạy `npm run docs:openapi`.
 - Cài đặt nhà hàng (singleton, tự tạo mặc định): `GET/PUT/PATCH /api/v1/admin/settings`, công khai `GET /api/v1/public/restaurant` (kèm `isOpenNow`, `ordering.canOrderNow`, múi giờ `Asia/Ho_Chi_Minh`). Module khác đọc cấu hình qua `settings.service.ts` (`getPricingConfig()`, `getSettings()`, `canOrderAt()`), tiện ích giờ mở cửa ở `src/utils/openingHours.ts`.
 - Khu vực & bàn: `CRUD /api/v1/admin/areas` (xoá khu vực còn bàn → `409 AREA_HAS_TABLES`), `CRUD /api/v1/admin/tables` (lọc `areaId` — `none` = chưa gán khu vực —, `status`, `isActive`, `search`), thống kê đầu màn hình `GET /api/v1/admin/tables/stats` (`total`, `occupied` = đang phục vụ, `available` = trống, `needsPayment` = chờ thanh toán, `reserved`, `inactive`). Trạng thái bàn (`available | occupied | needs_payment | reserved`) không sửa qua API admin — module phiên bàn gọi `setTableStatus()` trong `table.service.ts`.
 

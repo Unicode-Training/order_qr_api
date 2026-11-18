@@ -18,7 +18,9 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "seed:demo": "tsx src/scripts/seed-demo.ts",
+    "docs:openapi": "tsx src/scripts/export-openapi.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
