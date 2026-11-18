@@ -143,3 +143,12 @@ Lỗi:
 - Sinh lại QR: `POST /api/v1/admin/tables/:id/qr/regenerate` → token cũ (QR đã in) lập tức không dùng được.
 - **Xuất hàng loạt để in: định dạng ZIP** — `GET /api/v1/admin/tables/qr/export` trả `application/zip` chứa các ảnh PNG đặt tên `<mã bàn>.png` (ví dụ `B08.png`). Mặc định xuất mọi bàn đang hoạt động; lọc bằng `areaId=...` hoặc `ids=id1,id2`; `includeInactive=true` để lấy cả bàn đã tắt; `size` như trên; tối đa 500 bàn/lần. (Chọn ZIP thay vì PDF vì PDF cần nhúng font tiếng Việt và cố định bố cục in; ZIP PNG cho phép frontend/nhà in tự dàn trang.)
 - Khách quét QR: `GET /api/v1/public/tables/resolve/:qrToken` → `{ table: { id, code, name, area }, restaurant }` (`restaurant` giống `GET /public/restaurant`); `404 TABLE_NOT_FOUND` nếu token sai, đã bị regenerate hoặc bàn đã tắt.
+
+### Thanh toán & đóng phiên bàn
+
+Thanh toán chỉ **ghi nhận thủ công** (không tích hợp cổng thanh toán).
+
+- Khách: `POST /api/v1/public/sessions/current/request-bill` `{ preferredMethod? }` → phiên `payment_requested` (không gọi thêm món), bàn `needs_payment`, tạo `ServiceRequest` loại `request_bill` (gọi lại không tạo trùng). `GET /api/v1/public/sessions/current/bill` → hoá đơn tạm tính (món, subtotal, phí phục vụ, VAT, tổng, `bankTransfer` khi bật chuyển khoản).
+- Nhân viên: `GET /api/v1/admin/tables/:id/bill` hoặc `/admin/sessions/:id/bill`; thu tiền `POST /api/v1/admin/sessions/:id/payments` `{ method, amountReceived?, discountAmount?, discountReason?, note?, force? }` → tạo `Payment`, phiên `closed` (token cũ bị từ chối `401 SESSION_CLOSED`), bàn `available`, yêu cầu phục vụ còn mở → `done`. Còn đơn `pending/confirmed/preparing` → `409 UNFINISHED_ORDERS` trừ khi `force=true`.
+- Cách tính: phí phục vụ = subtotal × %, VAT = (subtotal + phí) × %, làm tròn từng khoản (VND tới 1 đồng); giảm giá trừ vào tổng sau VAT/phí (`calculateBillTotals` trong `src/modules/orders/pricing.ts`). Món/đơn đã huỷ không tính.
+- Chuyển bàn `POST /admin/sessions/:id/move` `{ toTableId }` (bàn đích phải `available`), huỷ phiên trống `POST /admin/sessions/:id/cancel`. Lịch sử: `GET /admin/payments?from=YYYY-MM-DD&to=&method=&tableId=` (lọc theo ngày kinh doanh giờ VN, `meta.summary` tổng theo phương thức).

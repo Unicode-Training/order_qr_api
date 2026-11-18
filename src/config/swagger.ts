@@ -1,6 +1,7 @@
 import path from 'node:path';
 import swaggerJsdoc from 'swagger-jsdoc';
 import { menuSchemas } from './swagger.menu';
+import { paymentSchemas } from './swagger.payments';
 import {
   guestOrderResponses,
   guestOrderSchemas,
@@ -268,6 +269,10 @@ export const swaggerSpec = swaggerJsdoc({
       { name: 'Menu', description: 'Thực đơn công khai cho khách' },
       { name: 'GuestSession', description: 'Phiên bàn của khách (header X-Session-Token)' },
       { name: 'GuestOrders', description: 'Giỏ hàng / đặt món / huỷ đơn của khách' },
+      {
+        name: 'Payments',
+        description: 'Hoá đơn, ghi nhận thanh toán thủ công, đóng / chuyển / huỷ phiên bàn',
+      },
     ],
     components: {
       securitySchemes: {
@@ -342,6 +347,7 @@ export const swaggerSpec = swaggerJsdoc({
         ...tableSchemas,
         ...menuSchemas,
         ...guestOrderSchemas,
+        ...paymentSchemas,
         PaginationMeta: {
           type: 'object',
           properties: {

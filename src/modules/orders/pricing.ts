@@ -15,7 +15,7 @@ export interface PriceBreakdown {
 }
 
 /** Làm tròn tiền: VND (và các tiền tệ không có số lẻ) làm tròn tới đơn vị, còn lại tới 2 chữ số. */
-function roundMoney(amount: number, currency: string): number {
+export function roundMoney(amount: number, currency: string): number {
   const factor = ZERO_DECIMAL_CURRENCIES.has(currency) ? 1 : 100;
   return Math.round(amount * factor) / factor;
 }
@@ -41,5 +41,33 @@ export function calculateTotals(subtotal: number, config: PricingConfig): PriceB
     vatPercent,
     vatAmount,
     total: roundMoney(roundedSubtotal + serviceCharge + vatAmount, currency),
+  };
+}
+
+export interface BillTotals extends PriceBreakdown {
+  /** Tổng trước giảm giá = subtotal + phí phục vụ + VAT. */
+  totalBeforeDiscount: number;
+  /** Số tiền giảm (đã làm tròn), trừ vào tổng sau thuế/phí. */
+  discountAmount: number;
+  /** Tổng phải trả = totalBeforeDiscount − discountAmount (không âm). */
+  total: number;
+}
+
+/**
+ * Tổng hoá đơn khi thanh toán: tính như `calculateTotals`, sau đó trừ giảm giá (số tiền cố định,
+ * áp lên tổng sau VAT/phí — giảm giá không làm thay đổi VAT/phí phục vụ đã tính).
+ */
+export function calculateBillTotals(
+  subtotal: number,
+  config: PricingConfig,
+  discountAmount = 0,
+): BillTotals {
+  const base = calculateTotals(subtotal, config);
+  const discount = Math.min(base.total, Math.max(0, roundMoney(discountAmount, config.currency)));
+  return {
+    ...base,
+    totalBeforeDiscount: base.total,
+    discountAmount: discount,
+    total: roundMoney(base.total - discount, config.currency),
   };
 }

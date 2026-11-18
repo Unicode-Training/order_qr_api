@@ -7,6 +7,11 @@ import healthRoutes from './modules/health/health.routes';
 import categoryRoutes from './modules/menu/category.routes';
 import menuItemRoutes from './modules/menu/menuItem.routes';
 import publicMenuRoutes from './modules/menu/publicMenu.routes';
+import {
+  adminPaymentsRouter,
+  adminSessionsRouter,
+  adminTableBillRouter,
+} from './modules/payments/payment.routes';
 import { createPublicOrderRouter } from './modules/orders/publicOrder.routes';
 import { createPublicSessionRouter } from './modules/sessions/session.routes';
 import { adminSettingsRouter, publicRestaurantRouter } from './modules/settings/settings.routes';
@@ -33,6 +38,9 @@ export function createApiRouter(): Router {
   adminRouter.use('/settings', adminSettingsRouter);
   adminRouter.use('/areas', areaRoutes);
   adminRouter.use('/tables', adminTablesRouter);
+  adminRouter.use('/tables', adminTableBillRouter);
+  adminRouter.use('/sessions', adminSessionsRouter);
+  adminRouter.use('/payments', adminPaymentsRouter);
   adminRouter.use('/categories', categoryRoutes);
   adminRouter.use('/menu-items', menuItemRoutes);
   adminRouter.use('/uploads', uploadRoutes);
