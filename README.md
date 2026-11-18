@@ -160,3 +160,13 @@ Thanh toán chỉ **ghi nhận thủ công** (không tích hợp cổng thanh to
 - Nhân viên: `GET /api/v1/admin/tables/:id/bill` hoặc `/admin/sessions/:id/bill`; thu tiền `POST /api/v1/admin/sessions/:id/payments` `{ method, amountReceived?, discountAmount?, discountReason?, note?, force? }` → tạo `Payment`, phiên `closed` (token cũ bị từ chối `401 SESSION_CLOSED`), bàn `available`, yêu cầu phục vụ còn mở → `done`. Còn đơn `pending/confirmed/preparing` → `409 UNFINISHED_ORDERS` trừ khi `force=true`.
 - Cách tính: phí phục vụ = subtotal × %, VAT = (subtotal + phí) × %, làm tròn từng khoản (VND tới 1 đồng); giảm giá trừ vào tổng sau VAT/phí (`calculateBillTotals` trong `src/modules/orders/pricing.ts`). Món/đơn đã huỷ không tính.
 - Chuyển bàn `POST /admin/sessions/:id/move` `{ toTableId }` (bàn đích phải `available`), huỷ phiên trống `POST /admin/sessions/:id/cancel`. Lịch sử: `GET /admin/payments?from=YYYY-MM-DD&to=&method=&tableId=` (lọc theo ngày kinh doanh giờ VN, `meta.summary` tổng theo phương thức).
+
+### Tổng quan quản trị (dashboard)
+
+Tất cả dưới `/api/v1/admin/dashboard` (cần đăng nhập). Ngày dạng `YYYY-MM-DD` theo giờ **Asia/Ho_Chi_Minh**; `from`/`to` gồm cả hai đầu, mặc định hôm nay.
+
+- `GET /summary?date=` — doanh thu (tổng `Payment.total` của ngày) và % so với hôm qua, số đơn (không tính đơn huỷ), giá trị TB/hoá đơn, bàn đang phục vụ/tổng bàn, thời gian phục vụ TB (`confirmed` đầu tiên → `served` cuối cùng trong `statusHistory`), yêu cầu/đơn đang chờ. `tables` và `pending` là trạng thái hiện tại. `changePercent = null` khi kỳ trước = 0.
+- `GET /revenue?from=&to=&groupBy=hour|day|month` — chuỗi doanh thu, số hoá đơn, số khách (guestCount của phiên; không khai báo tính 1), mốc trống điền 0. Giới hạn: hour ≤ 31 ngày, day ≤ 366 ngày, month ≤ 5 năm.
+- `GET /top-items?from=&to=&limit=` — món bán chạy theo số lượng (doanh thu = tổng `lineTotal`, chưa VAT/phí/giảm giá; bỏ đơn/món huỷ).
+- `GET /recent-orders?limit=` — đơn mới nhất (định dạng như `/admin/orders`).
+- `GET /payment-methods?from=&to=` — số tiền, số hoá đơn và % theo từng phương thức.

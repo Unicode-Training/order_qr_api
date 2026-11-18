@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from './middlewares/authenticate';
 import { createPublicRateLimiter } from './middlewares/rateLimit';
 import areaRoutes from './modules/areas/area.routes';
+import dashboardRoutes from './modules/dashboard/dashboard.routes';
 import { createAuthRouter } from './modules/auth/auth.routes';
 import healthRoutes from './modules/health/health.routes';
 import categoryRoutes from './modules/menu/category.routes';
@@ -52,6 +53,7 @@ export function createApiRouter(): Router {
   adminRouter.use('/uploads', uploadRoutes);
   adminRouter.use('/orders', adminOrdersRouter);
   adminRouter.use('/service-requests', adminServiceRequestsRouter);
+  adminRouter.use('/dashboard', dashboardRoutes);
   router.use('/admin', adminRouter);
 
   const publicRouter = Router();

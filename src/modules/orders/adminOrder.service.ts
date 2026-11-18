@@ -63,7 +63,7 @@ export interface AdminOrderDto extends Omit<OrderDto, 'statusHistory'> {
 }
 
 /** Chuyển nhiều đơn sang DTO, nạp kèm bàn/khu vực/nhân viên theo lô (tránh N+1). */
-async function toAdminOrderDtos(
+export async function toAdminOrderDtos(
   orders: LeanOrder[],
   pricing?: PricingConfig,
 ): Promise<AdminOrderDto[]> {

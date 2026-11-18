@@ -139,6 +139,8 @@ orderSchema.index({ sessionId: 1, updatedAt: 1 });
 orderSchema.index({ tableId: 1, createdAt: -1 });
 orderSchema.index({ businessDate: 1, status: 1, createdAt: 1 });
 orderSchema.index({ updatedAt: 1 });
+// Dashboard: đơn gần đây (sort createdAt giảm dần).
+orderSchema.index({ createdAt: -1 });
 
 export const Order = model<IOrder>('Order', orderSchema);
 
