@@ -7,6 +7,8 @@ let mongod: MongoMemoryServer | undefined;
 export async function connectTestDb(): Promise<void> {
   mongod = await MongoMemoryServer.create();
   await mongoose.connect(mongod.getUri(), { dbName: 'order-qr-test' });
+  // Đợi tạo xong index (vd. unique một phần của TableSession) để test đồng thời không bị race.
+  await Promise.all(mongoose.modelNames().map((name) => mongoose.model(name).init()));
 }
 
 export async function clearTestDb(): Promise<void> {

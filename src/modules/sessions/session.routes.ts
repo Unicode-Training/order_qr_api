@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { createPublicWriteRateLimiter } from '../../middlewares/rateLimit';
 import { validate } from '../../middlewares/validate';
 import { listSessionOrdersQuerySchema } from '../orders/order.schema';
+import * as paymentController from '../payments/payment.controller';
+import { requestBillSchema } from '../payments/payment.schema';
 import * as sessionController from './session.controller';
 import { requireGuestSession } from './session.middleware';
 import { openSessionSchema, updateSessionSchema } from './session.schema';
@@ -150,6 +152,79 @@ export function createPublicSessionRouter(): Router {
     validate({ query: listSessionOrdersQuerySchema }),
     sessionController.listOrders,
   );
+
+  /**
+   * @openapi
+   * /public/sessions/current/request-bill:
+   *   post:
+   *     tags: [GuestSession]
+   *     summary: Khách yêu cầu thanh toán
+   *     description: |
+   *       Phiên → `payment_requested` (không gọi thêm món được nữa), bàn → `needs_payment`,
+   *       tạo yêu cầu phục vụ `request_bill` cho nhân viên. Gọi lại nhiều lần an toàn
+   *       (chỉ cập nhật `preferredMethod`). `preferredMethod` phải nằm trong `paymentMethods` của nhà hàng.
+   *     security: [{ sessionToken: [] }]
+   *     requestBody:
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               preferredMethod: { type: string, enum: [cash, bank_transfer, card], nullable: true }
+   *     responses:
+   *       200:
+   *         description: Đã gửi yêu cầu; trả kèm hoá đơn tạm tính
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success: { type: boolean, example: true }
+   *                 data: { $ref: '#/components/schemas/RequestBillResult' }
+   *       400: { $ref: '#/components/responses/ValidationError' }
+   *       401: { $ref: '#/components/responses/InvalidSession' }
+   *       409:
+   *         description: NOTHING_TO_PAY — chưa có món nào
+   *         content:
+   *           application/json:
+   *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+   *       422:
+   *         description: PAYMENT_METHOD_UNAVAILABLE — nhà hàng chưa bật phương thức này
+   *         content:
+   *           application/json:
+   *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+   *       429: { $ref: '#/components/responses/TooManyRequests' }
+   */
+  router.post(
+    '/current/request-bill',
+    createPublicWriteRateLimiter(),
+    validate({ body: requestBillSchema }),
+    paymentController.requestBill,
+  );
+
+  /**
+   * @openapi
+   * /public/sessions/current/bill:
+   *   get:
+   *     tags: [GuestSession]
+   *     summary: Hoá đơn tạm tính của phiên
+   *     description: |
+   *       Gộp mọi đơn không bị huỷ (bỏ món đã huỷ): danh sách món, subtotal, phí phục vụ, VAT, tổng,
+   *       và thông tin chuyển khoản (`bankTransfer`, chỉ khi nhà hàng bật bank_transfer).
+   *     security: [{ sessionToken: [] }]
+   *     responses:
+   *       200:
+   *         description: Hoá đơn
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success: { type: boolean, example: true }
+   *                 data: { $ref: '#/components/schemas/Bill' }
+   *       401: { $ref: '#/components/responses/InvalidSession' }
+   */
+  router.get('/current/bill', paymentController.getGuestBill);
 
   return router;
 }

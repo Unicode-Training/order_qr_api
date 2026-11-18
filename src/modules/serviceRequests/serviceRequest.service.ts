@@ -10,6 +10,7 @@ import type { GuestSessionRef } from '../orders/order.service';
 import { Table } from '../tables/table.model';
 import { User } from '../users/user.model';
 import {
+  OPEN_SERVICE_REQUEST_STATUSES,
   ServiceRequest,
   type IServiceRequest,
   type ServiceRequestStatus,
@@ -252,4 +253,62 @@ export async function updateServiceRequest(
   }
   const [dto] = await toAdminDtos([updated as LeanServiceRequest]);
   return dto!;
+}
+
+// ------------------------------------------------------------------ Dùng cho thanh toán / đóng phiên
+
+type Id = string | Types.ObjectId;
+
+/**
+ * Khách yêu cầu thanh toán (POST /public/sessions/current/request-bill): dùng lại request_bill còn mở
+ * của phiên (kể cả do khách gửi qua /public/service-requests), chưa có thì tạo mới (pending).
+ * Gọi lại nhiều lần chỉ cập nhật phương thức mong muốn.
+ */
+export async function upsertBillRequest(
+  sessionId: Id,
+  tableId: Id,
+  preferredMethod: string | null,
+): Promise<LeanServiceRequest> {
+  const findOpen = () =>
+    ServiceRequest.findOneAndUpdate(
+      { sessionId, type: 'request_bill', status: { $in: OPEN_SERVICE_REQUEST_STATUSES } },
+      preferredMethod ? { $set: { preferredMethod } } : {},
+      { sort: { createdAt: -1 }, returnDocument: 'after', lean: true },
+    ) as Promise<LeanServiceRequest | null>;
+
+  const existing = await findOpen();
+  if (existing) return existing;
+  try {
+    const created = await ServiceRequest.create({
+      sessionId,
+      tableId,
+      type: 'request_bill',
+      preferredMethod,
+    });
+    return created.toObject();
+  } catch (err) {
+    // Request khác vừa tạo request_bill pending (unique index một phần) → dùng lại.
+    if (!isDuplicateKeyError(err)) throw err;
+    const raced = await findOpen();
+    if (!raced) throw err;
+    return raced;
+  }
+}
+
+/** Đóng phiên → mọi yêu cầu còn mở của phiên chuyển `done`. Trả số yêu cầu đã cập nhật. */
+export async function resolveOpenRequestsOfSession(
+  sessionId: Id,
+  handledBy: Id | null,
+  now = new Date(),
+): Promise<number> {
+  const result = await ServiceRequest.updateMany(
+    { sessionId, status: { $in: OPEN_SERVICE_REQUEST_STATUSES } },
+    { $set: { status: 'done', doneAt: now, handledBy } },
+  );
+  return result.modifiedCount;
+}
+
+/** Chuyển bàn: các yêu cầu của phiên đi theo bàn mới. */
+export async function moveRequestsToTable(sessionId: Id, tableId: Id): Promise<void> {
+  await ServiceRequest.updateMany({ sessionId }, { $set: { tableId } });
 }

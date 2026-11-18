@@ -1,6 +1,7 @@
 import path from 'node:path';
 import swaggerJsdoc from 'swagger-jsdoc';
 import { menuSchemas } from './swagger.menu';
+import { paymentSchemas } from './swagger.payments';
 import {
   guestOrderResponses,
   guestOrderSchemas,
@@ -275,6 +276,10 @@ export const swaggerSpec = swaggerJsdoc({
       },
       { name: 'AdminOrders', description: 'Điều phối đơn cho nhân viên/bếp (Live Orders)' },
       { name: 'ServiceRequests', description: 'Nhân viên xử lý yêu cầu nhanh tại bàn' },
+      {
+        name: 'Payments',
+        description: 'Hoá đơn, ghi nhận thanh toán thủ công, đóng / chuyển / huỷ phiên bàn',
+      },
     ],
     components: {
       securitySchemes: {
@@ -350,6 +355,7 @@ export const swaggerSpec = swaggerJsdoc({
         ...menuSchemas,
         ...guestOrderSchemas,
         ...staffSchemas,
+        ...paymentSchemas,
         PaginationMeta: {
           type: 'object',
           properties: {

@@ -15,6 +15,10 @@ export function generateSessionToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
+/** Lý do đóng phiên: đã thanh toán, hoặc nhân viên huỷ phiên trống. */
+export const SESSION_CLOSE_REASONS = ['paid', 'cancelled'] as const;
+export type SessionCloseReason = (typeof SESSION_CLOSE_REASONS)[number];
+
 export interface ITableSession {
   tableId: Types.ObjectId;
   sessionToken: string;
@@ -29,6 +33,12 @@ export interface ITableSession {
   note: string | null;
   openedAt: Date;
   closedAt: Date | null;
+  closeReason: SessionCloseReason | null;
+  /** Nhân viên đóng phiên (thu tiền / huỷ). */
+  closedBy: Types.ObjectId | null;
+  /** Phương thức khách muốn dùng khi yêu cầu thanh toán. */
+  preferredPaymentMethod: string | null;
+  paymentRequestedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -46,6 +56,10 @@ const tableSessionSchema = new Schema<ITableSession>(
     note: { type: String, default: null, trim: true, maxlength: 500 },
     openedAt: { type: Date, default: () => new Date() },
     closedAt: { type: Date, default: null },
+    closeReason: { type: String, enum: [...SESSION_CLOSE_REASONS, null], default: null },
+    closedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    preferredPaymentMethod: { type: String, default: null },
+    paymentRequestedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

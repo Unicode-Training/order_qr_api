@@ -151,3 +151,12 @@ Lỗi:
 - `PATCH /admin/orders/:id/items/:itemId` body `{ itemStatus?, markSoldOut?, reason? }`: món chỉ tiến lên hoặc bị huỷ; huỷ món tính lại `subtotal`; `markSoldOut` huỷ món ("Hết món") và đặt món trong thực đơn hết; huỷ hết mọi món → đơn tự `cancelled`.
 - Nhân viên tạo đơn thay khách: `POST /admin/tables/:id/orders` (tự mở phiên nếu bàn chưa có, đơn ở `confirmed`, không bị chặn bởi giờ mở cửa).
 - Yêu cầu nhanh: khách `POST/GET /api/v1/public/service-requests` (header `X-Session-Token`; loại `call_staff | request_water | request_utensils | request_bill | other`; trùng loại đang `pending` → `409 SERVICE_REQUEST_DUPLICATE`). Nhân viên `GET /admin/service-requests` (lọc `status`, `type`, `tableId`, `areaId`, `updatedSince`), `PATCH /admin/service-requests/:id` body `{ status: 'acknowledged' | 'done' }`.
+
+### Thanh toán & đóng phiên bàn
+
+Thanh toán chỉ **ghi nhận thủ công** (không tích hợp cổng thanh toán).
+
+- Khách: `POST /api/v1/public/sessions/current/request-bill` `{ preferredMethod? }` → phiên `payment_requested` (không gọi thêm món), bàn `needs_payment`, tạo `ServiceRequest` loại `request_bill` (gọi lại không tạo trùng). `GET /api/v1/public/sessions/current/bill` → hoá đơn tạm tính (món, subtotal, phí phục vụ, VAT, tổng, `bankTransfer` khi bật chuyển khoản).
+- Nhân viên: `GET /api/v1/admin/tables/:id/bill` hoặc `/admin/sessions/:id/bill`; thu tiền `POST /api/v1/admin/sessions/:id/payments` `{ method, amountReceived?, discountAmount?, discountReason?, note?, force? }` → tạo `Payment`, phiên `closed` (token cũ bị từ chối `401 SESSION_CLOSED`), bàn `available`, yêu cầu phục vụ còn mở → `done`. Còn đơn `pending/confirmed/preparing` → `409 UNFINISHED_ORDERS` trừ khi `force=true`.
+- Cách tính: phí phục vụ = subtotal × %, VAT = (subtotal + phí) × %, làm tròn từng khoản (VND tới 1 đồng); giảm giá trừ vào tổng sau VAT/phí (`calculateBillTotals` trong `src/modules/orders/pricing.ts`). Món/đơn đã huỷ không tính.
+- Chuyển bàn `POST /admin/sessions/:id/move` `{ toTableId }` (bàn đích phải `available`), huỷ phiên trống `POST /admin/sessions/:id/cancel`. Lịch sử: `GET /admin/payments?from=YYYY-MM-DD&to=&method=&tableId=` (lọc theo ngày kinh doanh giờ VN, `meta.summary` tổng theo phương thức).

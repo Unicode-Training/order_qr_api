@@ -14,6 +14,9 @@ export type ServiceRequestType = (typeof SERVICE_REQUEST_TYPES)[number];
 export const SERVICE_REQUEST_STATUSES = ['pending', 'acknowledged', 'done'] as const;
 export type ServiceRequestStatus = (typeof SERVICE_REQUEST_STATUSES)[number];
 
+/** Các trạng thái được coi là "còn mở" (đóng phiên → chuyển hết sang done). */
+export const OPEN_SERVICE_REQUEST_STATUSES: ServiceRequestStatus[] = ['pending', 'acknowledged'];
+
 export interface IServiceRequest {
   sessionId: Types.ObjectId;
   tableId: Types.ObjectId;
@@ -22,6 +25,8 @@ export interface IServiceRequest {
   status: ServiceRequestStatus;
   /** Nhân viên xử lý gần nhất. */
   handledBy: Types.ObjectId | null;
+  /** request_bill (từ POST /public/sessions/current/request-bill): phương thức khách muốn dùng. */
+  preferredMethod?: string | null;
   acknowledgedAt: Date | null;
   doneAt: Date | null;
   createdAt: Date;
@@ -38,6 +43,7 @@ const serviceRequestSchema = new Schema<IServiceRequest>(
     note: { type: String, default: null, trim: true, maxlength: 300 },
     status: { type: String, enum: SERVICE_REQUEST_STATUSES, default: 'pending' },
     handledBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    preferredMethod: { type: String, default: null },
     acknowledgedAt: { type: Date, default: null },
     doneAt: { type: Date, default: null },
   },
