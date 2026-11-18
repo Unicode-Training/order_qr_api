@@ -20,27 +20,30 @@ Sau đó mở `.env` và điền các giá trị (đặc biệt là `DATABASE_UR
 
 Tất cả biến được validate bằng zod khi khởi động (`src/config/env.ts`); nếu thiếu hoặc sai, server sẽ dừng và in ra danh sách lỗi.
 
-| Biến                              | Bắt buộc | Mô tả                                                                              | Ví dụ                                |
-| --------------------------------- | -------- | ---------------------------------------------------------------------------------- | ------------------------------------ |
-| `PORT`                            | Không    | Cổng HTTP (mặc định `4000`)                                                        | `4000`                               |
-| `NODE_ENV`                        | Không    | `development` \| `production` \| `test` (mặc định `development`)                   | `development`                        |
-| `DATABASE_URL`                    | **Có**   | Chuỗi kết nối MongoDB (`mongodb://` hoặc `mongodb+srv://`)                         | `mongodb://localhost:27017/order-qr` |
-| `JWT_ACCESS_SECRET`               | **Có**   | Secret ký access token, tối thiểu 32 ký tự                                         | chuỗi ngẫu nhiên                     |
-| `JWT_REFRESH_SECRET`              | **Có**   | Secret ký refresh token, tối thiểu 32 ký tự                                        | chuỗi ngẫu nhiên                     |
-| `JWT_ACCESS_EXPIRES`              | Không    | Thời hạn access token (mặc định `15m`)                                             | `15m`                                |
-| `JWT_REFRESH_EXPIRES`             | Không    | Thời hạn refresh token (mặc định `7d`)                                             | `7d`                                 |
-| `BCRYPT_SALT_ROUNDS`              | Không    | Số vòng băm bcrypt (4-15, mặc định `10`)                                           | `10`                                 |
-| `LOGIN_RATE_LIMIT_MAX`            | Không    | Số lần đăng nhập **thất bại** tối đa / IP trong một cửa sổ (mặc định `10`)         | `10`                                 |
-| `LOGIN_RATE_LIMIT_WINDOW_MINUTES` | Không    | Độ dài cửa sổ rate limit đăng nhập, phút (mặc định `15`)                           | `15`                                 |
-| `SEED_ADMIN_EMAIL`                | Seed     | Email tài khoản đầu tiên (chỉ dùng cho `npm run seed:admin`)                       | `admin@example.com`                  |
-| `SEED_ADMIN_PASSWORD`             | Seed     | Mật khẩu tài khoản đầu tiên (8-72 ký tự)                                           | chuỗi mạnh                           |
-| `SEED_ADMIN_FULLNAME`             | Không    | Họ tên tài khoản đầu tiên (mặc định `Quản trị viên`)                               | `Chủ quán`                           |
-| `CLIENT_URL`                      | **Có**   | URL web dành cho khách, được in vào mã QR                                          | `http://localhost:3000`              |
-| `CORS_ORIGINS`                    | Không    | Danh sách origin cho phép, cách nhau bởi dấu phẩy; rỗng hoặc `*` = cho phép tất cả | `http://localhost:3000`              |
-| `CLOUDINARY_CLOUD_NAME`           | Không    | Cloud name Cloudinary (để trống → API upload ảnh trả 503)                          | `my-cloud`                           |
-| `CLOUDINARY_API_KEY`              | Không    | API key Cloudinary                                                                 |                                      |
-| `CLOUDINARY_API_SECRET`           | Không    | API secret Cloudinary                                                              |                                      |
-| `CLOUDINARY_FOLDER`               | Không    | Thư mục gốc chứa ảnh trên Cloudinary (mặc định `order-qr`)                         | `order-qr`                           |
+| Biến                               | Bắt buộc | Mô tả                                                                                                   | Ví dụ                                |
+| ---------------------------------- | -------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `PORT`                             | Không    | Cổng HTTP (mặc định `4000`)                                                                             | `4000`                               |
+| `NODE_ENV`                         | Không    | `development` \| `production` \| `test` (mặc định `development`)                                        | `development`                        |
+| `DATABASE_URL`                     | **Có**   | Chuỗi kết nối MongoDB (`mongodb://` hoặc `mongodb+srv://`)                                              | `mongodb://localhost:27017/order-qr` |
+| `JWT_ACCESS_SECRET`                | **Có**   | Secret ký access token, tối thiểu 32 ký tự                                                              | chuỗi ngẫu nhiên                     |
+| `JWT_REFRESH_SECRET`               | **Có**   | Secret ký refresh token, tối thiểu 32 ký tự                                                             | chuỗi ngẫu nhiên                     |
+| `JWT_ACCESS_EXPIRES`               | Không    | Thời hạn access token (mặc định `15m`)                                                                  | `15m`                                |
+| `JWT_REFRESH_EXPIRES`              | Không    | Thời hạn refresh token (mặc định `7d`)                                                                  | `7d`                                 |
+| `BCRYPT_SALT_ROUNDS`               | Không    | Số vòng băm bcrypt (4-15, mặc định `10`)                                                                | `10`                                 |
+| `LOGIN_RATE_LIMIT_MAX`             | Không    | Số lần đăng nhập **thất bại** tối đa / IP trong một cửa sổ (mặc định `10`)                              | `10`                                 |
+| `LOGIN_RATE_LIMIT_WINDOW_MINUTES`  | Không    | Độ dài cửa sổ rate limit đăng nhập, phút (mặc định `15`)                                                | `15`                                 |
+| `PUBLIC_RATE_LIMIT_WINDOW_SECONDS` | Không    | Cửa sổ rate limit cho route `/public`, giây (mặc định `60`)                                             | `60`                                 |
+| `PUBLIC_RATE_LIMIT_MAX`            | Không    | Số request tối đa / IP / cửa sổ cho mọi route `/public` (mặc định `600`)                                | `600`                                |
+| `PUBLIC_WRITE_RATE_LIMIT_MAX`      | Không    | Số thao tác ghi tối đa / cửa sổ: mở phiên (theo IP), quote/đặt/huỷ đơn (theo phiên bàn) (mặc định `30`) | `30`                                 |
+| `SEED_ADMIN_EMAIL`                 | Seed     | Email tài khoản đầu tiên (chỉ dùng cho `npm run seed:admin`)                                            | `admin@example.com`                  |
+| `SEED_ADMIN_PASSWORD`              | Seed     | Mật khẩu tài khoản đầu tiên (8-72 ký tự)                                                                | chuỗi mạnh                           |
+| `SEED_ADMIN_FULLNAME`              | Không    | Họ tên tài khoản đầu tiên (mặc định `Quản trị viên`)                                                    | `Chủ quán`                           |
+| `CLIENT_URL`                       | **Có**   | URL web dành cho khách, được in vào mã QR                                                               | `http://localhost:3000`              |
+| `CORS_ORIGINS`                     | Không    | Danh sách origin cho phép, cách nhau bởi dấu phẩy; rỗng hoặc `*` = cho phép tất cả                      | `http://localhost:3000`              |
+| `CLOUDINARY_CLOUD_NAME`            | Không    | Cloud name Cloudinary (để trống → API upload ảnh trả 503)                                               | `my-cloud`                           |
+| `CLOUDINARY_API_KEY`               | Không    | API key Cloudinary                                                                                      |                                      |
+| `CLOUDINARY_API_SECRET`            | Không    | API secret Cloudinary                                                                                   |                                      |
+| `CLOUDINARY_FOLDER`                | Không    | Thư mục gốc chứa ảnh trên Cloudinary (mặc định `order-qr`)                                              | `order-qr`                           |
 
 Tạo secret ngẫu nhiên: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
 

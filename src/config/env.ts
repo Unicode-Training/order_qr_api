@@ -24,6 +24,13 @@ const envSchema = z.object({
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(4).max(15).default(10),
   LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(10),
   LOGIN_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().min(1).default(15),
+  // Rate limit cho các route /public (khách không đăng nhập). Khách cùng nhà hàng thường dùng chung
+  // một IP (Wi-Fi quán) nên giới hạn chung theo IP đặt rộng; thao tác ghi bị giới hạn chặt hơn.
+  PUBLIC_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().min(1).default(60),
+  /** Số request tối đa / IP / cửa sổ cho mọi route /public. */
+  PUBLIC_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(600),
+  /** Số thao tác ghi tối đa / cửa sổ: mở phiên (theo IP), quote/đặt/huỷ đơn (theo phiên bàn). */
+  PUBLIC_WRITE_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(30),
   CLIENT_URL: z.url('CLIENT_URL phải là URL hợp lệ'),
   CORS_ORIGINS: z
     .string()

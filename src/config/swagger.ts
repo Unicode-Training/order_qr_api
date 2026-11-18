@@ -1,6 +1,11 @@
 import path from 'node:path';
 import swaggerJsdoc from 'swagger-jsdoc';
 import { menuSchemas } from './swagger.menu';
+import {
+  guestOrderResponses,
+  guestOrderSchemas,
+  guestOrderSecuritySchemes,
+} from './swagger.orders';
 
 const nullableString = (example?: string) => ({ type: 'string', nullable: true, example });
 
@@ -261,12 +266,16 @@ export const swaggerSpec = swaggerJsdoc({
       { name: 'MenuItems', description: 'Quản lý món ăn, còn/hết món' },
       { name: 'Uploads', description: 'Upload ảnh lên Cloudinary' },
       { name: 'Menu', description: 'Thực đơn công khai cho khách' },
+      { name: 'GuestSession', description: 'Phiên bàn của khách (header X-Session-Token)' },
+      { name: 'GuestOrders', description: 'Giỏ hàng / đặt món / huỷ đơn của khách' },
     ],
     components: {
       securitySchemes: {
         bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        ...guestOrderSecuritySchemes,
       },
       responses: {
+        ...guestOrderResponses,
         Unauthorized: {
           description: 'Chưa đăng nhập / token không hợp lệ hoặc hết hạn',
           content: {
@@ -332,6 +341,7 @@ export const swaggerSpec = swaggerJsdoc({
         ...restaurantSchemas,
         ...tableSchemas,
         ...menuSchemas,
+        ...guestOrderSchemas,
         PaginationMeta: {
           type: 'object',
           properties: {
