@@ -37,6 +37,10 @@ Tất cả biến được validate bằng zod khi khởi động (`src/config/e
 | `SEED_ADMIN_FULLNAME`             | Không    | Họ tên tài khoản đầu tiên (mặc định `Quản trị viên`)                               | `Chủ quán`                           |
 | `CLIENT_URL`                      | **Có**   | URL web dành cho khách, được in vào mã QR                                          | `http://localhost:3000`              |
 | `CORS_ORIGINS`                    | Không    | Danh sách origin cho phép, cách nhau bởi dấu phẩy; rỗng hoặc `*` = cho phép tất cả | `http://localhost:3000`              |
+| `CLOUDINARY_CLOUD_NAME`           | Không    | Cloud name Cloudinary (để trống → API upload ảnh trả 503)                          | `my-cloud`                           |
+| `CLOUDINARY_API_KEY`              | Không    | API key Cloudinary                                                                 |                                      |
+| `CLOUDINARY_API_SECRET`           | Không    | API secret Cloudinary                                                              |                                      |
+| `CLOUDINARY_FOLDER`               | Không    | Thư mục gốc chứa ảnh trên Cloudinary (mặc định `order-qr`)                         | `order-qr`                           |
 
 Tạo secret ngẫu nhiên: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
 
