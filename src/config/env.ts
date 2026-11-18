@@ -34,6 +34,17 @@ const envSchema = z.object({
         .map((origin) => origin.trim())
         .filter(Boolean),
     ),
+  // Cloudinary (lưu ảnh món/danh mục/nhà hàng). Để trống → API upload trả 503.
+  CLOUDINARY_CLOUD_NAME: z.string().trim().default(''),
+  CLOUDINARY_API_KEY: z.string().trim().default(''),
+  CLOUDINARY_API_SECRET: z.string().trim().default(''),
+  /** Thư mục gốc trên Cloudinary; ảnh được lưu vào `<CLOUDINARY_FOLDER>/<subfolder>`. */
+  CLOUDINARY_FOLDER: z
+    .string()
+    .trim()
+    .default('')
+    .transform((value) => value.replace(/^\/+|\/+$/g, '') || 'order-qr')
+    .pipe(z.string().regex(/^[A-Za-z0-9_\-/]+$/, 'CLOUDINARY_FOLDER chỉ gồm chữ, số, _, -, /')),
 });
 
 export type Env = z.infer<typeof envSchema>;

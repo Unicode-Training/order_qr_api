@@ -1,5 +1,6 @@
 import path from 'node:path';
 import swaggerJsdoc from 'swagger-jsdoc';
+import { menuSchemas } from './swagger.menu';
 
 const nullableString = (example?: string) => ({ type: 'string', nullable: true, example });
 
@@ -183,6 +184,10 @@ export const swaggerSpec = swaggerJsdoc({
       },
       { name: 'Settings', description: 'Cài đặt nhà hàng (singleton)' },
       { name: 'Restaurant', description: 'Thông tin nhà hàng công khai cho khách' },
+      { name: 'Categories', description: 'Quản lý danh mục món' },
+      { name: 'MenuItems', description: 'Quản lý món ăn, còn/hết món' },
+      { name: 'Uploads', description: 'Upload ảnh lên Cloudinary' },
+      { name: 'Menu', description: 'Thực đơn công khai cho khách' },
     ],
     components: {
       securitySchemes: {
@@ -252,6 +257,7 @@ export const swaggerSpec = swaggerJsdoc({
           properties: { refreshToken: { type: 'string' } },
         },
         ...restaurantSchemas,
+        ...menuSchemas,
         PaginationMeta: {
           type: 'object',
           properties: {

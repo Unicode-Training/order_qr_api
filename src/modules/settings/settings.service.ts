@@ -14,6 +14,7 @@ import {
   type RestaurantSettingsData,
   type RestaurantSettingsInput,
 } from './settings.schema';
+import { cleanupReplacedImage } from '../uploads/image.cleanup';
 
 export interface AdminSettings extends RestaurantSettingsData {
   updatedAt: Date;
@@ -92,12 +93,18 @@ async function loadSettings(): Promise<StoredSettings> {
 }
 
 async function saveSettings(data: RestaurantSettingsData): Promise<AdminSettings> {
+  const previous = await RestaurantSettings.findOne({ key: SETTINGS_SINGLETON_KEY })
+    .select('logo coverImage')
+    .lean();
   const saved = await RestaurantSettings.findOneAndUpdate(
     { key: SETTINGS_SINGLETON_KEY },
     { $set: data },
     { upsert: true, returnDocument: 'after', lean: true },
   );
   if (!saved) throw AppError.internal('Không lưu được cài đặt nhà hàng');
+  // Ảnh logo/ảnh bìa bị thay hoặc gỡ → xoá ảnh cũ trên Cloudinary (lỗi chỉ ghi log).
+  cleanupReplacedImage(previous?.logo, saved.logo);
+  cleanupReplacedImage(previous?.coverImage, saved.coverImage);
   return toAdminSettings(saved);
 }
 
