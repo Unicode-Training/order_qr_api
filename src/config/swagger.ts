@@ -244,13 +244,20 @@ const tableSchemas = {
  * Tài liệu OpenAPI được sinh từ các comment `@openapi` trong file *.routes.ts của từng module.
  * Các task sau chỉ cần thêm comment `@openapi` vào routes của module mới.
  */
-export const swaggerSpec = swaggerJsdoc({
+const rawSpec = swaggerJsdoc({
   definition: {
     openapi: '3.0.3',
     info: {
       title: 'Order QR API',
       version: '1.0.0',
-      description: 'API đặt món qua mã QR',
+      description: [
+        'API đặt món qua mã QR cho nhà hàng.',
+        '',
+        '- `/admin/*`: bắt buộc đăng nhập — header `Authorization: Bearer <accessToken>` (lấy từ `POST /auth/login`). Không phân quyền theo vai trò.',
+        '- `/public/*`: không cần đăng nhập, rate limit theo IP. Các API sau khi quét QR xác thực bằng header `X-Session-Token` (nhận từ `POST /public/sessions`).',
+        '- Response thành công: `{ success: true, data, meta? }`; lỗi: `{ success: false, error: { code, message, details? } }`.',
+        '- Polling: các API danh sách có `updatedSince` trả `meta.serverTime` — dùng làm `updatedSince` cho lần gọi sau.',
+      ].join('\n'),
     },
     servers: [{ url: '/api/v1' }],
     tags: [
@@ -301,6 +308,12 @@ export const swaggerSpec = swaggerJsdoc({
         },
         ValidationError: {
           description: 'Dữ liệu không hợp lệ',
+          content: {
+            'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
+          },
+        },
+        PayloadTooLarge: {
+          description: 'Body vượt giới hạn kích thước (PAYLOAD_TOO_LARGE)',
           content: {
             'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
           },
@@ -376,3 +389,46 @@ export const swaggerSpec = swaggerJsdoc({
   },
   apis: [path.join(__dirname, '../modules/**/*.routes.{ts,js}')],
 });
+
+type Operation = {
+  security?: Record<string, unknown>[];
+  requestBody?: unknown;
+  responses?: Record<string, unknown>;
+};
+type OpenApiDoc = { paths: Record<string, Record<string, Operation>> };
+
+const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
+
+/**
+ * Bổ sung đồng nhất các phần chung mà comment từng route có thể quên:
+ * - /admin/*: security bearerAuth + 401;
+ * - route có X-Session-Token: 401 InvalidSession;
+ * - /public/* và /auth/*: 429 (rate limit);
+ * - có request body: 413 (giới hạn kích thước body).
+ */
+export function finalizeSpec<T>(spec: T): T {
+  const doc = spec as unknown as OpenApiDoc;
+  for (const [path, item] of Object.entries(doc.paths ?? {})) {
+    for (const [method, op] of Object.entries(item)) {
+      if (!HTTP_METHODS.has(method)) continue;
+      const responses = (op.responses ??= {});
+      const ref = (name: string) => ({ $ref: `#/components/responses/${name}` });
+      if (path.startsWith('/admin/')) {
+        op.security ??= [{ bearerAuth: [] }];
+        responses['401'] ??= ref('Unauthorized');
+      }
+      if (op.security?.some((entry) => 'sessionToken' in entry)) {
+        responses['401'] ??= ref('InvalidSession');
+      }
+      if (path.startsWith('/public/') || path === '/auth/login' || path === '/auth/refresh') {
+        responses['429'] ??= ref('TooManyRequests');
+      }
+      if (op.requestBody && !path.startsWith('/admin/uploads')) {
+        responses['413'] ??= ref('PayloadTooLarge');
+      }
+    }
+  }
+  return spec;
+}
+
+export const swaggerSpec = finalizeSpec(rawSpec);

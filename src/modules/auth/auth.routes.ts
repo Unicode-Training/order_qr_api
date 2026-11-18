@@ -104,7 +104,17 @@ export function createAuthRouter(): Router {
    *           schema: { $ref: '#/components/schemas/RefreshTokenBody' }
    *     responses:
    *       200:
-   *         description: Đã đăng xuất
+   *         description: Đã đăng xuất (refresh token bị thu hồi; token không tồn tại cũng trả 200)
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success: { type: boolean, example: true }
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     message: { type: string, example: Đã đăng xuất }
    *       400: { $ref: '#/components/responses/ValidationError' }
    */
   router.post('/logout', validate({ body: refreshTokenBodySchema }), authController.logout);
