@@ -182,7 +182,7 @@ export async function priceOrderLines(
   return { lines: priced, subtotal: priced.reduce((sum, line) => sum + line.lineTotal, 0) };
 }
 
-function pricingOf(settings: AdminSettings): PricingConfig {
+export function pricingOf(settings: AdminSettings): PricingConfig {
   return {
     currency: settings.currency,
     vatPercent: settings.vatPercent,
@@ -212,6 +212,7 @@ interface PricedLineDto {
 export interface OrderItemDto extends PricedLineDto {
   id: string;
   itemStatus: OrderStatus;
+  cancelReason: string | null;
 }
 
 export interface OrderDto {
@@ -252,7 +253,7 @@ function toLineDto(line: PricedLine): PricedLineDto {
   };
 }
 
-type LeanOrder = IOrder & { _id: Types.ObjectId };
+export type LeanOrder = IOrder & { _id: Types.ObjectId };
 
 export function toOrderDto(order: LeanOrder, pricing: PricingConfig): OrderDto {
   return {
@@ -267,6 +268,7 @@ export function toOrderDto(order: LeanOrder, pricing: PricingConfig): OrderDto {
       id: item._id.toString(),
       ...toLineDto(item),
       itemStatus: item.itemStatus,
+      cancelReason: item.cancelReason ?? null,
     })),
     note: order.note ?? null,
     subtotal: order.subtotal,
@@ -319,7 +321,7 @@ export function toBusinessDate(date: Date): string {
 }
 
 /** Cấp số đơn tiếp theo của ngày: ORD-0001, ORD-0002, ... (an toàn khi đặt đồng thời). */
-async function nextOrderNumber(businessDate: string): Promise<string> {
+export async function nextOrderNumber(businessDate: string): Promise<string> {
   const counter = await OrderCounter.findOneAndUpdate(
     { key: businessDate },
     { $inc: { seq: 1 } },
@@ -471,7 +473,21 @@ export async function getSessionBill(sessionId: string): Promise<SessionBill> {
           _id: null,
           subtotal: { $sum: '$subtotal' },
           activeOrderCount: { $sum: 1 },
-          itemCount: { $sum: { $sum: '$items.quantity' } },
+          // Không tính các món đã bị nhân viên huỷ / hết món.
+          itemCount: {
+            $sum: {
+              $reduce: {
+                input: '$items',
+                initialValue: 0,
+                in: {
+                  $add: [
+                    '$$value',
+                    { $cond: [{ $eq: ['$$this.itemStatus', 'cancelled'] }, 0, '$$this.quantity'] },
+                  ],
+                },
+              },
+            },
+          },
         },
       },
     ]),
