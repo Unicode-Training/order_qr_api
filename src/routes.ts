@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { authenticate } from './middlewares/authenticate';
+import areaRoutes from './modules/areas/area.routes';
 import { createAuthRouter } from './modules/auth/auth.routes';
 import healthRoutes from './modules/health/health.routes';
 import { adminSettingsRouter, publicRestaurantRouter } from './modules/settings/settings.routes';
+import { adminTablesRouter, publicTablesRouter } from './modules/tables/table.routes';
 import userRoutes from './modules/users/user.routes';
 
 /**
@@ -21,10 +23,13 @@ export function createApiRouter(): Router {
   adminRouter.use(authenticate);
   adminRouter.use('/users', userRoutes);
   adminRouter.use('/settings', adminSettingsRouter);
+  adminRouter.use('/areas', areaRoutes);
+  adminRouter.use('/tables', adminTablesRouter);
   router.use('/admin', adminRouter);
 
   const publicRouter = Router();
   publicRouter.use('/restaurant', publicRestaurantRouter);
+  publicRouter.use('/tables', publicTablesRouter);
   router.use('/public', publicRouter);
 
   return router;

@@ -127,3 +127,12 @@ Lỗi:
 - **Không phân quyền theo vai trò**: mọi route dưới `/api/v1/admin/*` đều qua middleware `authenticate` (đăng ký sẵn trong `src/routes.ts`), mọi tài khoản đăng nhập đều có toàn quyền. Route cho khách đặt dưới `/api/v1/public/*` (không cần đăng nhập). Lấy user hiện tại trong controller: `getAuthUser(req)`.
 - Tài liệu API: thêm comment `@openapi` trong `*.routes.ts`, Swagger tự quét.
 - Cài đặt nhà hàng (singleton, tự tạo mặc định): `GET/PUT/PATCH /api/v1/admin/settings`, công khai `GET /api/v1/public/restaurant` (kèm `isOpenNow`, `ordering.canOrderNow`, múi giờ `Asia/Ho_Chi_Minh`). Module khác đọc cấu hình qua `settings.service.ts` (`getPricingConfig()`, `getSettings()`, `canOrderAt()`), tiện ích giờ mở cửa ở `src/utils/openingHours.ts`.
+- Khu vực & bàn: `CRUD /api/v1/admin/areas` (xoá khu vực còn bàn → `409 AREA_HAS_TABLES`), `CRUD /api/v1/admin/tables` (lọc `areaId` — `none` = chưa gán khu vực —, `status`, `isActive`, `search`), thống kê đầu màn hình `GET /api/v1/admin/tables/stats` (`total`, `occupied` = đang phục vụ, `available` = trống, `needsPayment` = chờ thanh toán, `reserved`, `inactive`). Trạng thái bàn (`available | occupied | needs_payment | reserved`) không sửa qua API admin — module phiên bàn gọi `setTableStatus()` trong `table.service.ts`.
+
+### Mã QR gọi món tại bàn
+
+- Mỗi bàn có `qrToken` ngẫu nhiên 192 bit (base64url, 32 ký tự, unique). Nội dung QR: `${CLIENT_URL}/t/${qrToken}` (trường `qrUrl` trong response bàn).
+- Ảnh QR một bàn: `GET /api/v1/admin/tables/:id/qr?format=png|svg&size=512` (`size` 64–2048 px, `download=true` để tải file). Header `Cache-Control: no-store`.
+- Sinh lại QR: `POST /api/v1/admin/tables/:id/qr/regenerate` → token cũ (QR đã in) lập tức không dùng được.
+- **Xuất hàng loạt để in: định dạng ZIP** — `GET /api/v1/admin/tables/qr/export` trả `application/zip` chứa các ảnh PNG đặt tên `<mã bàn>.png` (ví dụ `B08.png`). Mặc định xuất mọi bàn đang hoạt động; lọc bằng `areaId=...` hoặc `ids=id1,id2`; `includeInactive=true` để lấy cả bàn đã tắt; `size` như trên; tối đa 500 bàn/lần. (Chọn ZIP thay vì PDF vì PDF cần nhúng font tiếng Việt và cố định bố cục in; ZIP PNG cho phép frontend/nhà in tự dàn trang.)
+- Khách quét QR: `GET /api/v1/public/tables/resolve/:qrToken` → `{ table: { id, code, name, area }, restaurant }` (`restaurant` giống `GET /public/restaurant`); `404 TABLE_NOT_FOUND` nếu token sai, đã bị regenerate hoặc bàn đã tắt.
