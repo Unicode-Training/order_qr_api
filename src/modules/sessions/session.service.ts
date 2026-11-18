@@ -165,3 +165,45 @@ export async function updateCurrentSession(
   if (!session) throw new AppError(401, 'SESSION_CLOSED', 'Phiên bàn đã kết thúc');
   return toSessionDto(session as LeanSession);
 }
+
+export interface EnsuredSession {
+  session: GuestSessionRef;
+  /** true nếu vừa mở phiên mới cho bàn. */
+  isNew: boolean;
+}
+
+/**
+ * Nhân viên thao tác cho một bàn (vd. tạo đơn thay khách): lấy phiên chưa đóng của bàn,
+ * chưa có thì tự mở phiên mới và đánh dấu bàn occupied. An toàn khi gọi đồng thời.
+ */
+export async function ensureActiveSessionForTable(tableId: string): Promise<EnsuredSession> {
+  const table = await Table.findById(tableId).select('_id isActive').lean();
+  if (!table) throw AppError.notFound('Không tìm thấy bàn');
+
+  const toRef = (session: LeanSession): GuestSessionRef => ({
+    id: session._id.toString(),
+    tableId: session.tableId.toString(),
+    status: session.status,
+  });
+
+  const existing = await TableSession.findOne({ tableId, isActive: true }).lean<LeanSession>();
+  if (existing) return { session: toRef(existing), isNew: false };
+
+  if (!table.isActive) {
+    throw new AppError(409, 'TABLE_INACTIVE', 'Bàn đã ngừng sử dụng, không thể mở phiên mới');
+  }
+
+  try {
+    const created = await TableSession.create({ tableId: table._id });
+    await Table.updateOne(
+      { _id: table._id, status: { $in: ['available', 'reserved'] } },
+      { $set: { status: 'occupied' } },
+    );
+    return { session: toRef(created.toObject()), isNew: true };
+  } catch (err) {
+    if (!isDuplicateKeyError(err)) throw err;
+    const raced = await TableSession.findOne({ tableId, isActive: true }).lean<LeanSession>();
+    if (!raced) throw err;
+    return { session: toRef(raced), isNew: false };
+  }
+}

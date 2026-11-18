@@ -7,6 +7,7 @@ import {
   guestOrderSchemas,
   guestOrderSecuritySchemes,
 } from './swagger.orders';
+import { staffSchemas } from './swagger.staff';
 
 const nullableString = (example?: string) => ({ type: 'string', nullable: true, example });
 
@@ -270,6 +271,12 @@ export const swaggerSpec = swaggerJsdoc({
       { name: 'GuestSession', description: 'Phiên bàn của khách (header X-Session-Token)' },
       { name: 'GuestOrders', description: 'Giỏ hàng / đặt món / huỷ đơn của khách' },
       {
+        name: 'GuestServiceRequests',
+        description: 'Yêu cầu nhanh tại bàn của khách (gọi nhân viên, xin nước, ...)',
+      },
+      { name: 'AdminOrders', description: 'Điều phối đơn cho nhân viên/bếp (Live Orders)' },
+      { name: 'ServiceRequests', description: 'Nhân viên xử lý yêu cầu nhanh tại bàn' },
+      {
         name: 'Payments',
         description: 'Hoá đơn, ghi nhận thanh toán thủ công, đóng / chuyển / huỷ phiên bàn',
       },
@@ -347,6 +354,7 @@ export const swaggerSpec = swaggerJsdoc({
         ...tableSchemas,
         ...menuSchemas,
         ...guestOrderSchemas,
+        ...staffSchemas,
         ...paymentSchemas,
         PaginationMeta: {
           type: 'object',

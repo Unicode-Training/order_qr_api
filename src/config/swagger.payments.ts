@@ -106,7 +106,7 @@ export const paymentSchemas = {
         properties: {
           id: idProp,
           type: { type: 'string', example: 'request_bill' },
-          status: { type: 'string', enum: ['open', 'acknowledged', 'done'] },
+          status: { type: 'string', enum: ['pending', 'acknowledged', 'done'] },
           createdAt: dateTime,
         },
       },

@@ -1,30 +1,34 @@
 import { model, Schema, type HydratedDocument, type Types } from 'mongoose';
 
-/**
- * Yêu cầu phục vụ của khách gửi tới nhân viên.
- * - request_bill : khách yêu cầu thanh toán
- * - call_staff   : gọi nhân viên (dành cho task sau)
- */
-export const SERVICE_REQUEST_TYPES = ['request_bill', 'call_staff'] as const;
+/** Loại yêu cầu nhanh tại bàn. */
+export const SERVICE_REQUEST_TYPES = [
+  'call_staff',
+  'request_water',
+  'request_utensils',
+  'request_bill',
+  'other',
+] as const;
 export type ServiceRequestType = (typeof SERVICE_REQUEST_TYPES)[number];
 
-/** open → (acknowledged) → done. Khi phiên đóng, mọi yêu cầu chưa done của phiên chuyển done. */
-export const SERVICE_REQUEST_STATUSES = ['open', 'acknowledged', 'done'] as const;
+/** pending → acknowledged → done (pending cũng có thể → done thẳng). */
+export const SERVICE_REQUEST_STATUSES = ['pending', 'acknowledged', 'done'] as const;
 export type ServiceRequestStatus = (typeof SERVICE_REQUEST_STATUSES)[number];
 
-/** Các trạng thái được coi là "còn mở". */
-export const OPEN_SERVICE_REQUEST_STATUSES: ServiceRequestStatus[] = ['open', 'acknowledged'];
+/** Các trạng thái được coi là "còn mở" (đóng phiên → chuyển hết sang done). */
+export const OPEN_SERVICE_REQUEST_STATUSES: ServiceRequestStatus[] = ['pending', 'acknowledged'];
 
 export interface IServiceRequest {
   sessionId: Types.ObjectId;
   tableId: Types.ObjectId;
   type: ServiceRequestType;
-  status: ServiceRequestStatus;
-  /** request_bill: phương thức khách muốn dùng (cash | bank_transfer | card). */
-  preferredMethod: string | null;
   note: string | null;
-  resolvedAt: Date | null;
-  resolvedBy: Types.ObjectId | null;
+  status: ServiceRequestStatus;
+  /** Nhân viên xử lý gần nhất. */
+  handledBy: Types.ObjectId | null;
+  /** request_bill (từ POST /public/sessions/current/request-bill): phương thức khách muốn dùng. */
+  preferredMethod?: string | null;
+  acknowledgedAt: Date | null;
+  doneAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,16 +40,27 @@ const serviceRequestSchema = new Schema<IServiceRequest>(
     sessionId: { type: Schema.Types.ObjectId, ref: 'TableSession', required: true },
     tableId: { type: Schema.Types.ObjectId, ref: 'Table', required: true },
     type: { type: String, enum: SERVICE_REQUEST_TYPES, required: true },
-    status: { type: String, enum: SERVICE_REQUEST_STATUSES, default: 'open', index: true },
+    note: { type: String, default: null, trim: true, maxlength: 300 },
+    status: { type: String, enum: SERVICE_REQUEST_STATUSES, default: 'pending' },
+    handledBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     preferredMethod: { type: String, default: null },
-    note: { type: String, default: null, maxlength: 500 },
-    resolvedAt: { type: Date, default: null },
-    resolvedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    acknowledgedAt: { type: Date, default: null },
+    doneAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
-serviceRequestSchema.index({ sessionId: 1, type: 1, status: 1 });
+/** Chống spam: mỗi phiên chỉ có tối đa MỘT yêu cầu đang pending cho mỗi loại (an toàn khi bấm đồng thời). */
+serviceRequestSchema.index(
+  { sessionId: 1, type: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: 'pending' },
+    name: 'one_pending_request_per_type',
+  },
+);
+serviceRequestSchema.index({ sessionId: 1, createdAt: -1 });
 serviceRequestSchema.index({ status: 1, createdAt: 1 });
+serviceRequestSchema.index({ updatedAt: 1 });
 
 export const ServiceRequest = model<IServiceRequest>('ServiceRequest', serviceRequestSchema);

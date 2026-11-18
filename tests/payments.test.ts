@@ -169,7 +169,10 @@ describe('Yêu cầu thanh toán, thanh toán và đóng phiên', () => {
         vatAmount: 13020,
         total: 175770,
       });
-      expect(res.body.data.serviceRequest).toMatchObject({ type: 'request_bill', status: 'open' });
+      expect(res.body.data.serviceRequest).toMatchObject({
+        type: 'request_bill',
+        status: 'pending',
+      });
 
       expect((await TableSession.findById(id))!.status).toBe('payment_requested');
       expect((await Table.findById(table.id))!.status).toBe('needs_payment');
@@ -189,6 +192,35 @@ describe('Yêu cầu thanh toán, thanh toán và đóng phiên', () => {
       });
       expect(order.status).toBe(409);
       expect(order.body.error.code).toBe('SESSION_NOT_OPEN');
+    });
+
+    it('dùng lại request_bill khách gửi qua /service-requests; thu tiền → yêu cầu done', async () => {
+      const { token, id } = await openSession();
+      await placeOrder(token);
+      const quick = await guest(token).post('/service-requests', { type: 'request_bill' });
+      expect(quick.status, JSON.stringify(quick.body)).toBe(201);
+      const call = await guest(token).post('/service-requests', { type: 'call_staff' });
+      expect(call.status).toBe(201);
+
+      const res = await guest(token).post('/sessions/current/request-bill', {
+        preferredMethod: 'cash',
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.data.serviceRequest.id).toBe(quick.body.data.id);
+      expect(await ServiceRequest.countDocuments({ sessionId: id, type: 'request_bill' })).toBe(1);
+
+      await serveAll();
+      const paid = await admin.post(`/sessions/${id}/payments`, {
+        method: 'cash',
+        amountReceived: 200000,
+      });
+      expect(paid.status).toBe(201);
+      const requests = await ServiceRequest.find({ sessionId: id });
+      expect(requests).toHaveLength(2);
+      for (const r of requests) {
+        expect(r.status).toBe('done');
+        expect(r.doneAt).toBeInstanceOf(Date);
+      }
     });
 
     it('phương thức chưa bật → 422; phiên chưa có món → 409 NOTHING_TO_PAY', async () => {
