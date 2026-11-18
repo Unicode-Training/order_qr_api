@@ -1,0 +1,114 @@
+# Order QR API
+
+Backend cho hệ thống đặt món qua mã QR, xây dựng bằng **Node.js (>= 20) + ExpressJS 5 + TypeScript + Mongoose (MongoDB)**.
+
+## Yêu cầu
+
+- Node.js >= 20, npm
+- MongoDB (local, Docker hoặc MongoDB Atlas)
+
+## Cài đặt
+
+```bash
+npm install
+cp .env.example .env
+```
+
+Sau đó mở `.env` và điền các giá trị (đặc biệt là `DATABASE_URL`).
+
+## Cấu hình `.env`
+
+Tất cả biến được validate bằng zod khi khởi động (`src/config/env.ts`); nếu thiếu hoặc sai, server sẽ dừng và in ra danh sách lỗi.
+
+| Biến                  | Bắt buộc | Mô tả                                                                              | Ví dụ                                |
+| --------------------- | -------- | ---------------------------------------------------------------------------------- | ------------------------------------ |
+| `PORT`                | Không    | Cổng HTTP (mặc định `4000`)                                                        | `4000`                               |
+| `NODE_ENV`            | Không    | `development` \| `production` \| `test` (mặc định `development`)                   | `development`                        |
+| `DATABASE_URL`        | **Có**   | Chuỗi kết nối MongoDB (`mongodb://` hoặc `mongodb+srv://`)                         | `mongodb://localhost:27017/order-qr` |
+| `JWT_ACCESS_SECRET`   | **Có**   | Secret ký access token, tối thiểu 32 ký tự                                         | chuỗi ngẫu nhiên                     |
+| `JWT_REFRESH_SECRET`  | **Có**   | Secret ký refresh token, tối thiểu 32 ký tự                                        | chuỗi ngẫu nhiên                     |
+| `JWT_ACCESS_EXPIRES`  | Không    | Thời hạn access token (mặc định `15m`)                                             | `15m`                                |
+| `JWT_REFRESH_EXPIRES` | Không    | Thời hạn refresh token (mặc định `7d`)                                             | `7d`                                 |
+| `CLIENT_URL`          | **Có**   | URL web dành cho khách, được in vào mã QR                                          | `http://localhost:3000`              |
+| `CORS_ORIGINS`        | Không    | Danh sách origin cho phép, cách nhau bởi dấu phẩy; rỗng hoặc `*` = cho phép tất cả | `http://localhost:3000`              |
+
+Tạo secret ngẫu nhiên: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
+
+## Chạy dự án
+
+```bash
+npm run dev      # chạy dev với tsx watch (tự reload)
+npm run build    # biên dịch TypeScript ra dist/
+npm start        # chạy bản build (dist/server.js)
+```
+
+- Health check: `GET http://localhost:4000/api/v1/health` (trả `503` nếu mất kết nối DB)
+- Swagger UI: `http://localhost:4000/api/docs` (JSON: `/api/docs.json`)
+
+## Kiểm thử & chất lượng mã
+
+```bash
+npm test             # Vitest + supertest + mongodb-memory-server
+npm run test:watch
+npm run lint         # ESLint
+npm run format       # Prettier (ghi file); format:check để chỉ kiểm tra
+npm run typecheck
+```
+
+Test dùng MongoDB in-memory (`mongodb-memory-server`), không cần DB thật. Lần chạy đầu tiên sẽ tải binary MongoDB (cần mạng). Biến môi trường cho test được đặt sẵn trong `tests/setup-env.ts`.
+
+Dùng DB test trong file test:
+
+```ts
+import { setupTestDb } from './helpers/db';
+import { createTestClient } from './helpers/app';
+
+setupTestDb(); // khởi động Mongo in-memory, xoá dữ liệu sau mỗi test
+
+it('...', async () => {
+  const res = await createTestClient().get('/api/v1/health');
+});
+```
+
+## Cấu trúc thư mục
+
+```
+src/
+  app.ts                 # tạo Express app (không listen) — dùng cho server và test
+  server.ts              # kết nối DB rồi listen, graceful shutdown
+  routes.ts              # router /api/v1, đăng ký route các module
+  config/                # env (zod), database, swagger
+  middlewares/           # validate (zod), errorHandler, notFound, requestLogger
+  utils/                 # AppError, response helper, pagination, logger
+  modules/<module>/
+    <module>.model.ts       # Mongoose model
+    <module>.schema.ts      # zod schema cho request
+    <module>.service.ts     # nghiệp vụ
+    <module>.controller.ts  # xử lý request/response
+    <module>.routes.ts      # khai báo route + comment @openapi
+tests/
+  setup-env.ts           # biến môi trường cho test
+  helpers/               # db (mongodb-memory-server), app (supertest)
+```
+
+## Quy ước API
+
+Thành công:
+
+```json
+{ "success": true, "data": {}, "meta": { "page": 1, "limit": 20, "total": 100, "totalPages": 5 } }
+```
+
+Lỗi:
+
+```json
+{
+  "success": false,
+  "error": { "code": "VALIDATION_ERROR", "message": "Dữ liệu không hợp lệ", "details": [] }
+}
+```
+
+- Ném lỗi nghiệp vụ bằng `AppError` (ví dụ `throw AppError.notFound('Không tìm thấy món')`); Express 5 tự bắt lỗi từ handler async.
+- Validate request: `router.post('/', validate({ body: createSchema, query, params }), controller)`.
+- Phân trang: `paginationQuerySchema` + `getPaginationOptions(req.query, { allowedSortFields })` + `buildPaginationMeta(total, page, limit)`; sort dạng `?sort=-createdAt,name`.
+- Tài liệu API: thêm comment `@openapi` trong `*.routes.ts`, Swagger tự quét.
