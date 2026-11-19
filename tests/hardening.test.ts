@@ -75,35 +75,21 @@ describe('Hardening HTTP', () => {
     expect(res.headers['x-powered-by']).toBeUndefined();
   });
 
-  it('CORS theo CORS_ORIGINS: origin hợp lệ được phép, origin lạ không có header', async () => {
+  it('CORS cho phép mọi origin (phản chiếu Origin, có credentials)', async () => {
     const app = createApp();
-    const ok = await supertest(app)
+    const pre = await supertest(app)
       .options('/api/v1/public/menu')
-      .set('Origin', 'http://localhost:3000')
+      .set('Origin', 'https://any-site.example')
       .set('Access-Control-Request-Method', 'POST')
       .set('Access-Control-Request-Headers', 'X-Session-Token');
-    expect(ok.status).toBe(204);
-    expect(ok.headers['access-control-allow-origin']).toBe('http://localhost:3000');
-    expect(ok.headers['access-control-allow-headers']).toContain('X-Session-Token');
+    expect(pre.status).toBe(204);
+    expect(pre.headers['access-control-allow-origin']).toBe('https://any-site.example');
+    expect(pre.headers['access-control-allow-credentials']).toBe('true');
+    expect(pre.headers['access-control-allow-headers']).toContain('X-Session-Token');
 
-    const bad = await supertest(app).get('/api/v1/health').set('Origin', 'https://evil.example');
-    expect(bad.headers['access-control-allow-origin']).toBeUndefined();
-  });
-
-  it('buildCorsOptions: "*" hoặc rỗng → cho phép mọi origin; bỏ dấu / cuối', () => {
-    expect(buildCorsOptions(['*']).origin).toBe(true);
-    expect(buildCorsOptions([]).origin).toBe(true);
-    const origin = buildCorsOptions(['https://app.example/']).origin as (
-      o: string | undefined,
-      cb: (err: Error | null, allow?: boolean) => void,
-    ) => void;
-    const check = (value: string | undefined) =>
-      new Promise((resolve) => origin(value, (_e, allow) => resolve(allow)));
-    return Promise.all([
-      expect(check('https://app.example')).resolves.toBe(true),
-      expect(check('https://other.example')).resolves.toBe(false),
-      expect(check(undefined)).resolves.toBe(true),
-    ]);
+    const res = await supertest(app).get('/api/v1/health').set('Origin', 'http://localhost:5173');
+    expect(res.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+    expect(buildCorsOptions().origin).toBe(true);
   });
 
   it('rate limit route /public trả 429 kèm header RateLimit', async () => {

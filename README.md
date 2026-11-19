@@ -41,7 +41,6 @@ Tất cả biến được validate bằng zod khi khởi động (`src/config/e
 | `SEED_ADMIN_FULLNAME`              | Không    | Họ tên tài khoản đầu tiên (mặc định `Quản trị viên`)                                                              | `Chủ quán`                           |
 | `SEED_DEMO_PASSWORD`               | Không    | Mật khẩu cho tài khoản nhân viên demo do `npm run seed:demo` tạo (mặc định `Demo@123456`)                         | chuỗi mạnh                           |
 | `CLIENT_URL`                       | **Có**   | URL web dành cho khách, được in vào mã QR                                                                         | `http://localhost:3000`              |
-| `CORS_ORIGINS`                     | Không    | Danh sách origin cho phép, cách nhau bởi dấu phẩy; rỗng hoặc `*` = cho phép tất cả                                | `http://localhost:3000`              |
 | `CLOUDINARY_CLOUD_NAME`            | Không    | Cloud name Cloudinary (để trống → API upload ảnh trả 503)                                                         | `my-cloud`                           |
 | `CLOUDINARY_API_KEY`               | Không    | API key Cloudinary                                                                                                |                                      |
 | `CLOUDINARY_API_SECRET`            | Không    | API secret Cloudinary                                                                                             |                                      |
@@ -241,7 +240,7 @@ Rate limit `/public` mặc định 600 request/phút/IP (khách cùng Wi-Fi dùn
 ## Bảo mật
 
 - `helmet` (CSP, nosniff, HSTS...; `Cross-Origin-Resource-Policy: cross-origin` để frontend nhúng ảnh QR). Swagger UI nới CSP riêng tại `/api/docs`.
-- CORS theo `CORS_ORIGINS` (so khớp chính xác, bỏ `/` cuối); origin lạ không nhận header `Access-Control-Allow-Origin`. Rỗng/`*` cho phép mọi origin (production sẽ log cảnh báo). Header cho phép: `Content-Type`, `Authorization`, `X-Session-Token`; frontend đọc được `RateLimit`, `Retry-After`, `Content-Disposition`.
+- CORS cho phép mọi origin (phản chiếu `Origin`, có `credentials`) — dự án học tập nên không giới hạn domain. Header cho phép: `Content-Type`, `Authorization`, `X-Session-Token`; frontend đọc được `RateLimit`, `Retry-After`, `Content-Disposition`.
 - Rate limit: `/public/*` theo IP; thao tác ghi của khách theo phiên bàn; đăng nhập sai theo IP.
 - Giới hạn body JSON/form `100kb` (`413 PAYLOAD_TOO_LARGE`); upload ảnh tối đa 5MB.
 - Chống NoSQL injection: middleware `sanitize` loại key bắt đầu bằng `$` hoặc chứa `.` khỏi body/query (tự viết vì `express-mongo-sanitize` không chạy với Express 5), cộng với zod validate mọi input và `mongoose.set('strictQuery', true)`.
