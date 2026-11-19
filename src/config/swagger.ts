@@ -279,6 +279,7 @@ const rawSpec = swaggerJsdoc({
         '- `/public/*`: không cần đăng nhập, rate limit theo IP. Các API sau khi quét QR xác thực bằng header `X-Session-Token` (nhận từ `POST /public/sessions`).',
         '- Response thành công: `{ success: true, data, meta? }`; lỗi: `{ success: false, error: { code, message, details? } }`.',
         '- Polling: các API danh sách có `updatedSince` trả `meta.serverTime` — dùng làm `updatedSince` cho lần gọi sau.',
+        '- Mã lỗi chung: `400 VALIDATION_ERROR` (sai tham số/body), `400 BAD_REQUEST` (JSON sai cú pháp, id sai định dạng), `401 UNAUTHORIZED | TOKEN_EXPIRED | INVALID_TOKEN`, `404 NOT_FOUND`, `409 CONFLICT` (trùng dữ liệu unique), `413 PAYLOAD_TOO_LARGE` (body > 100kb), `429 TOO_MANY_REQUESTS`, `500 INTERNAL_ERROR`. Lỗi nghiệp vụ riêng của từng API được ghi trong mô tả response.',
       ].join('\n'),
     },
     servers: [{ url: '/api/v1' }],
@@ -327,13 +328,15 @@ const rawSpec = swaggerJsdoc({
       responses: {
         ...guestOrderResponses,
         Unauthorized: {
-          description: 'Chưa đăng nhập / token không hợp lệ hoặc hết hạn',
+          description:
+            'Chưa đăng nhập hoặc tài khoản đã bị vô hiệu hoá (UNAUTHORIZED), access token hết hạn (TOKEN_EXPIRED → gọi POST /auth/refresh rồi thử lại), token sai (INVALID_TOKEN)',
           content: {
             'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
           },
         },
         ValidationError: {
-          description: 'Dữ liệu không hợp lệ',
+          description:
+            'Dữ liệu không hợp lệ (VALIDATION_ERROR, `details` = danh sách `{ location, path, message, code }`) hoặc body JSON sai cú pháp (BAD_REQUEST)',
           content: {
             'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } },
           },
@@ -416,8 +419,10 @@ const rawSpec = swaggerJsdoc({
   apis: [path.join(__dirname, '../modules/**/*.routes.{ts,js}')],
 });
 
+type Parameter = { in?: string; $ref?: string };
 type Operation = {
   security?: Record<string, unknown>[];
+  parameters?: Parameter[];
   requestBody?: unknown;
   responses?: Record<string, unknown>;
 };
@@ -430,7 +435,8 @@ const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
  * - /admin/*: security bearerAuth + 401;
  * - route có X-Session-Token: 401 InvalidSession;
  * - /public/* và /auth/*: 429 (rate limit);
- * - có request body: 413 (giới hạn kích thước body).
+ * - có request body: 413 (giới hạn kích thước body);
+ * - có tham số path/query hoặc request body: 400 (validate bằng zod → VALIDATION_ERROR).
  */
 export function finalizeSpec<T>(spec: T): T {
   const doc = spec as unknown as OpenApiDoc;
@@ -439,6 +445,12 @@ export function finalizeSpec<T>(spec: T): T {
       if (!HTTP_METHODS.has(method)) continue;
       const responses = (op.responses ??= {});
       const ref = (name: string) => ({ $ref: `#/components/responses/${name}` });
+      const hasInput =
+        op.requestBody !== undefined ||
+        [...((item.parameters as Parameter[] | undefined) ?? []), ...(op.parameters ?? [])].some(
+          (param) => param.$ref !== undefined || param.in === 'path' || param.in === 'query',
+        );
+      if (hasInput) responses['400'] ??= ref('ValidationError');
       if (path.startsWith('/admin/')) {
         op.security ??= [{ bearerAuth: [] }];
         responses['401'] ??= ref('Unauthorized');
