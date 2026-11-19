@@ -301,6 +301,16 @@ export async function recordPayment(
   const { bill, orderIds, settings } = await computeBill(session, input.discountAmount);
   const currency = settings.currency;
 
+  // Cùng quy tắc với requestBill: chỉ nhận phương thức nhà hàng đang bật (kiểm tra trước khi đóng phiên).
+  if (!settings.paymentMethods.includes(input.method)) {
+    throw new AppError(
+      422,
+      'PAYMENT_METHOD_UNAVAILABLE',
+      'Nhà hàng chưa hỗ trợ phương thức thanh toán này',
+      { paymentMethods: settings.paymentMethods },
+    );
+  }
+
   if (bill.items.length === 0) {
     throw new AppError(
       409,

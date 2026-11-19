@@ -3412,7 +3412,8 @@
               "cash",
               "bank_transfer",
               "card"
-            ]
+            ],
+            "description": "Phải nằm trong paymentMethods của cài đặt nhà hàng, nếu không → 422 PAYMENT_METHOD_UNAVAILABLE"
           },
           "amountReceived": {
             "type": "number",
@@ -6364,7 +6365,7 @@
           "Payments"
         ],
         "summary": "Ghi nhận thanh toán (thủ công) và đóng phiên",
-        "description": "Tính tiền từ mọi đơn không bị huỷ của phiên (bỏ món đã huỷ): phí phục vụ = subtotal × %,\nVAT = (subtotal + phí) × %, làm tròn từng khoản theo tiền tệ (VND: tới 1 đồng);\ngiảm giá (`discountAmount`, số tiền) trừ vào tổng sau VAT/phí.\n\n- Còn đơn `pending`/`confirmed`/`preparing` → 409 `UNFINISHED_ORDERS` (kèm `details.unfinishedOrders`);\n  gửi `force=true` để vẫn thu, bản ghi lưu `forced=true` và `warnings`.\n- `amountReceived` < tổng → 422 `INSUFFICIENT_AMOUNT`; tiền thối `change = amountReceived − total`.\n  Chuyển khoản/thẻ có thể bỏ trống `amountReceived` (= tổng).\n\nThành công: tạo Payment, phiên → `closed` (token cũ của khách bị từ chối, quét QR lại sẽ mở phiên mới),\nbàn → `available`, các yêu cầu phục vụ còn mở của phiên → `done`.\n",
+        "description": "Tính tiền từ mọi đơn không bị huỷ của phiên (bỏ món đã huỷ): phí phục vụ = subtotal × %,\nVAT = (subtotal + phí) × %, làm tròn từng khoản theo tiền tệ (VND: tới 1 đồng);\ngiảm giá (`discountAmount`, số tiền) trừ vào tổng sau VAT/phí.\n\n- Còn đơn `pending`/`confirmed`/`preparing` → 409 `UNFINISHED_ORDERS` (kèm `details.unfinishedOrders`);\n  gửi `force=true` để vẫn thu, bản ghi lưu `forced=true` và `warnings`.\n- `amountReceived` < tổng → 422 `INSUFFICIENT_AMOUNT`; tiền thối `change = amountReceived − total`.\n  Chuyển khoản/thẻ có thể bỏ trống `amountReceived` (= tổng).\n- `method` chưa bật trong cài đặt (`paymentMethods`) → 422 `PAYMENT_METHOD_UNAVAILABLE`\n  (kèm `details.paymentMethods`); phiên vẫn mở, bàn giữ nguyên trạng thái.\n\nThành công: tạo Payment, phiên → `closed` (token cũ của khách bị từ chối, quét QR lại sẽ mở phiên mới),\nbàn → `available`, các yêu cầu phục vụ còn mở của phiên → `done`.\n",
         "security": [
           {
             "bearerAuth": []
@@ -6433,7 +6434,7 @@
             "$ref": "#/components/responses/PayloadTooLarge"
           },
           "422": {
-            "description": "INSUFFICIENT_AMOUNT (tiền nhận chưa đủ), INVALID_DISCOUNT (giảm giá vượt tổng)",
+            "description": "INSUFFICIENT_AMOUNT (tiền nhận chưa đủ), INVALID_DISCOUNT (giảm giá vượt tổng),\nPAYMENT_METHOD_UNAVAILABLE (phương thức chưa bật trong cài đặt; `details.paymentMethods` = các phương thức đang bật)\n",
             "content": {
               "application/json": {
                 "schema": {

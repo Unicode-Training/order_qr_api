@@ -404,6 +404,35 @@ describe('Yêu cầu thanh toán, thanh toán và đóng phiên', () => {
       });
     });
 
+    it('phương thức chưa bật → 422 PAYMENT_METHOD_UNAVAILABLE, phiên vẫn mở, bàn giữ trạng thái', async () => {
+      const { token, id } = await openSession();
+      await placeOrder(token);
+      await serveAll();
+      expect((await guest(token).post('/sessions/current/request-bill', {})).status).toBe(200);
+
+      const card = await admin.post(`/sessions/${id}/payments`, { method: 'card' });
+      expect(card.status).toBe(422);
+      expect(card.body.error.code).toBe('PAYMENT_METHOD_UNAVAILABLE');
+      expect(card.body.error.details).toEqual({ paymentMethods: ['cash', 'bank_transfer'] });
+
+      const session = await TableSession.findById(id);
+      expect(session!.status).toBe('payment_requested');
+      expect(session!.closedAt ?? null).toBeNull();
+      expect((await Table.findById(table.id))!.status).toBe('needs_payment');
+      expect(await Payment.countDocuments({ sessionId: id })).toBe(0);
+      expect(
+        await guest(token)
+          .get('/sessions/current')
+          .then((r) => r.status),
+      ).toBe(200);
+
+      const cash = await admin.post(`/sessions/${id}/payments`, {
+        method: 'cash',
+        amountReceived: 200000,
+      });
+      expect(cash.status, JSON.stringify(cash.body)).toBe(201);
+    });
+
     it('phiên trống: không thu được, huỷ phiên giải phóng bàn; phiên có món không huỷ được', async () => {
       const { id } = await openSession();
       const pay = await admin.post(`/sessions/${id}/payments`, { method: 'bank_transfer' });
