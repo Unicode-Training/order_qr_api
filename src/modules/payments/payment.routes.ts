@@ -85,7 +85,7 @@ export const adminSessionsRouter = Router();
  *         name: to
  *         description: Ngày mở phiên kết thúc, gồm cả ngày này
  *         schema: { type: string, format: date, example: '2026-11-30' }
- *       - { in: query, name: closeReason, schema: { type: string, enum: [paid, cancelled] } }
+ *       - { in: query, name: closeReason, schema: { type: string, enum: [paid, cancelled, expired] } }
  *     responses:
  *       200:
  *         description: Danh sách phiên

@@ -3619,7 +3619,8 @@
             "type": "string",
             "enum": [
               "paid",
-              "cancelled"
+              "cancelled",
+              "expired"
             ]
           },
           "closedAt": {
@@ -3821,7 +3822,8 @@
             "type": "string",
             "enum": [
               "paid",
-              "cancelled"
+              "cancelled",
+              "expired"
             ],
             "nullable": true
           },
@@ -6681,7 +6683,8 @@
               "type": "string",
               "enum": [
                 "paid",
-                "cancelled"
+                "cancelled",
+                "expired"
               ]
             }
           }
