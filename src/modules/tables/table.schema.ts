@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { objectIdSchema } from '../../utils/objectId';
 import { paginationQuerySchema } from '../../utils/pagination';
-import { TABLE_STATUSES } from './table.model';
+import { MANUAL_TABLE_STATUSES, TABLE_STATUSES } from './table.model';
 
 export const tableCodeSchema = z
   .string()
@@ -50,6 +50,24 @@ export const updateTableSchema = z
     message: 'Cần ít nhất một trường để cập nhật',
   });
 
+/** Nhân viên đặt bàn trước / trả bàn về trống. */
+export const setTableStatusSchema = z
+  .object({
+    status: z.enum(MANUAL_TABLE_STATUSES),
+    /** Ghi chú đặt bàn; chuỗi rỗng = null. Chỉ dùng khi `status = reserved`. */
+    reservationNote: z
+      .string()
+      .trim()
+      .max(200)
+      .nullable()
+      .optional()
+      .transform((value) => value || null),
+  })
+  .refine((data) => data.status === 'reserved' || data.reservationNote === null, {
+    message: 'Chỉ ghi chú đặt bàn khi chuyển sang reserved',
+    path: ['reservationNote'],
+  });
+
 export const listTablesQuerySchema = paginationQuerySchema.extend({
   /** `none` = bàn chưa gán khu vực. */
   areaId: z.union([objectIdSchema, z.literal('none')]).optional(),
@@ -79,6 +97,7 @@ export const qrTokenParamsSchema = z.object({ qrToken: z.string().max(200) });
 
 export type CreateTableInput = z.infer<typeof createTableSchema>;
 export type UpdateTableInput = z.infer<typeof updateTableSchema>;
+export type SetTableStatusInput = z.infer<typeof setTableStatusSchema>;
 export type ListTablesQuery = z.infer<typeof listTablesQuerySchema>;
 export type QrImageQuery = z.infer<typeof qrImageQuerySchema>;
 export type QrExportQuery = z.infer<typeof qrExportQuerySchema>;

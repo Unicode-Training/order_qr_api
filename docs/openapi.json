@@ -1179,6 +1179,13 @@
           "status": {
             "$ref": "#/components/schemas/TableStatus"
           },
+          "reservationNote": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200,
+            "example": "Anh Minh - 19:00 - 6 người",
+            "description": "Ghi chú đặt bàn, chỉ có khi status = reserved"
+          },
           "qrToken": {
             "type": "string",
             "example": "q1Wm2cZ0p8yH3nVt6Ra9LbXe4KdUs7Gf"
@@ -1200,6 +1207,28 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "SetTableStatusBody": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "reserved",
+              "available"
+            ]
+          },
+          "reservationNote": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200,
+            "example": "Anh Minh - 19:00 - 6 người",
+            "description": "Tuỳ chọn, chỉ khi status = reserved (chuỗi rỗng = null)"
           }
         }
       },
@@ -5016,7 +5045,7 @@
           "Tables"
         ],
         "summary": "Cập nhật bàn",
-        "description": "Trạng thái (`status`) không sửa ở đây — do module phiên bàn cập nhật.",
+        "description": "Trạng thái (`status`) không sửa ở đây — đặt/bỏ đặt trước dùng `PATCH /admin/tables/{id}/status`; occupied/needs_payment do module phiên bàn cập nhật.",
         "security": [
           {
             "bearerAuth": []
@@ -5144,6 +5173,83 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/admin/tables/{id}/status": {
+      "patch": {
+        "tags": [
+          "Tables"
+        ],
+        "summary": "Đặt bàn trước (reserved) hoặc trả bàn về trống (available)",
+        "description": "Chỉ đổi được khi bàn đang hoạt động, đang `available`/`reserved` và không có phiên chưa đóng.\nCập nhật có điều kiện theo trạng thái cũ: nếu khách vừa quét QR mở phiên thì trả 409 thay vì ghi đè.\nKhách vẫn mở phiên được trên bàn `reserved` (bàn → `occupied`, `reservationNote` bị xoá).\nVề `available` thì `reservationNote` = null.\n",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetTableStatusBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bàn sau khi cập nhật",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Table"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "Bàn đang phục vụ / chờ thanh toán / có phiên chưa đóng (TABLE_IN_USE) hoặc bàn đã tắt (TABLE_INACTIVE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
           }
         }
       }

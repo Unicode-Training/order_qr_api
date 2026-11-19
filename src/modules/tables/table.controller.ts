@@ -5,6 +5,7 @@ import type {
   ListTablesQuery,
   QrExportQuery,
   QrImageQuery,
+  SetTableStatusInput,
   UpdateTableInput,
 } from './table.schema';
 import * as tableService from './table.service';
@@ -42,6 +43,13 @@ export async function getById(req: Request<IdParams>, res: Response): Promise<vo
 
 export async function update(req: Request<IdParams>, res: Response): Promise<void> {
   sendSuccess(res, await tableService.updateTable(req.params.id, req.body as UpdateTableInput));
+}
+
+export async function setStatus(req: Request<IdParams>, res: Response): Promise<void> {
+  sendSuccess(
+    res,
+    await tableService.setTableReservation(req.params.id, req.body as SetTableStatusInput),
+  );
 }
 
 export async function remove(req: Request<IdParams>, res: Response): Promise<void> {

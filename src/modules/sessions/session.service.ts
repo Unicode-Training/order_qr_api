@@ -105,7 +105,7 @@ export async function openSession(input: OpenSessionInput): Promise<OpenSessionR
   if (isNew) {
     await Table.updateOne(
       { _id: table._id, status: { $in: ['available', 'reserved'] } },
-      { $set: { status: 'occupied' } },
+      { $set: { status: 'occupied', reservationNote: null } },
     );
   }
 
@@ -197,7 +197,7 @@ export async function ensureActiveSessionForTable(tableId: string): Promise<Ensu
     const created = await TableSession.create({ tableId: table._id });
     await Table.updateOne(
       { _id: table._id, status: { $in: ['available', 'reserved'] } },
-      { $set: { status: 'occupied' } },
+      { $set: { status: 'occupied', reservationNote: null } },
     );
     return { session: toRef(created.toObject()), isNew: true };
   } catch (err) {
