@@ -83,6 +83,10 @@
       "description": "Hoá đơn, ghi nhận thanh toán thủ công, đóng / chuyển / huỷ phiên bàn"
     },
     {
+      "name": "Sessions",
+      "description": "Nhân viên xem danh sách / chi tiết phiên bàn, sửa số khách"
+    },
+    {
       "name": "Dashboard",
       "description": "Tổng quan quản trị: doanh thu, đơn hàng, món bán chạy (giờ Asia/Ho_Chi_Minh)"
     }
@@ -1199,6 +1203,9 @@
           "qrTokenUpdatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "currentSession": {
+            "$ref": "#/components/schemas/TableCurrentSession"
           },
           "createdAt": {
             "type": "string",
@@ -3736,6 +3743,185 @@
                 }
               }
             }
+          }
+        }
+      },
+      "AdminSession": {
+        "type": "object",
+        "description": "Phiên bàn cho nhân viên (không có sessionToken)",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "665f1c2e8b3a4d0012345678"
+          },
+          "table": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "example": "665f1c2e8b3a4d0012345678"
+              },
+              "code": {
+                "type": "string",
+                "example": "B08"
+              },
+              "name": {
+                "type": "string",
+                "example": "Bàn 08"
+              }
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "payment_requested",
+              "closed"
+            ]
+          },
+          "guestCount": {
+            "type": "integer",
+            "nullable": true,
+            "example": 4
+          },
+          "customerName": {
+            "type": "string",
+            "nullable": true,
+            "example": "Anh Minh"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "openedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "paymentRequestedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "preferredPaymentMethod": {
+            "type": "string",
+            "enum": [
+              "cash",
+              "bank_transfer",
+              "card"
+            ],
+            "nullable": true
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "closeReason": {
+            "type": "string",
+            "enum": [
+              "paid",
+              "cancelled"
+            ],
+            "nullable": true
+          },
+          "closedBy": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "example": "665f1c2e8b3a4d0012345678"
+              },
+              "fullName": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "orderCount": {
+            "type": "integer",
+            "example": 3,
+            "description": "Số đơn không bị huỷ"
+          },
+          "subtotal": {
+            "type": "number",
+            "example": 455000,
+            "description": "Tổng tiền món (trước phí phục vụ/VAT) của các đơn không bị huỷ"
+          }
+        }
+      },
+      "AdminSessionDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AdminSession"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "orders": {
+                "type": "array",
+                "description": "Mọi đơn của phiên (kể cả đơn huỷ), cũ trước",
+                "items": {
+                  "$ref": "#/components/schemas/AdminOrder"
+                }
+              },
+              "payment": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Payment"
+                  }
+                ],
+                "nullable": true,
+                "description": "Chỉ khi phiên đã thanh toán"
+              },
+              "bill": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Bill"
+                  }
+                ],
+                "nullable": true,
+                "description": "Hoá đơn tạm tính — chỉ khi phiên chưa đóng"
+              }
+            }
+          }
+        ]
+      },
+      "TableCurrentSession": {
+        "type": "object",
+        "nullable": true,
+        "description": "Phiên chưa đóng của bàn (null nếu bàn không có phiên)",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "665f1c2e8b3a4d0012345678"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "payment_requested"
+            ]
+          },
+          "guestCount": {
+            "type": "integer",
+            "nullable": true,
+            "example": 4
+          },
+          "openedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "paymentRequestedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "orderCount": {
+            "type": "integer",
+            "example": 2,
+            "description": "Số đơn không bị huỷ"
           }
         }
       },
@@ -6401,6 +6587,262 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/admin/sessions": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Danh sách phiên bàn (đang mở / lịch sử)",
+        "description": "Mặc định chỉ trả phiên chưa đóng (`open`, `payment_requested`); có `closeReason` mà không có `status`\n→ mặc định `closed`. `from`/`to` lọc theo ngày mở phiên (`openedAt`, giờ Asia/Ho_Chi_Minh, gồm cả hai đầu).\n`orderCount`/`subtotal` không tính đơn đã huỷ. Không bao giờ trả `sessionToken`.\n",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "description": "openedAt, closedAt, createdAt, updatedAt (tiền tố - để giảm dần). Mặc định -openedAt.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "description": "Một hoặc nhiều trạng thái, cách nhau bởi dấu phẩy",
+            "schema": {
+              "type": "string",
+              "example": "open,payment_requested"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tableId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "areaId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "description": "Ngày mở phiên bắt đầu (giờ Việt Nam), gồm cả ngày này",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "example": "2026-11-01"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "description": "Ngày mở phiên kết thúc, gồm cả ngày này",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "example": "2026-11-30"
+            }
+          },
+          {
+            "in": "query",
+            "name": "closeReason",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "paid",
+                "cancelled"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách phiên",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AdminSession"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PaginationMeta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/admin/sessions/{id}": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Chi tiết phiên bàn (đơn, thanh toán, hoá đơn tạm tính)",
+        "description": "Như một phần tử của danh sách + `orders` (mọi đơn của phiên, kể cả đơn huỷ, cũ trước),\n`payment` (khi đã thu tiền) và `bill` (hoá đơn tạm tính, chỉ khi phiên chưa đóng).\n",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chi tiết phiên",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AdminSessionDetail"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Nhân viên sửa số khách / tên khách / ghi chú của phiên chưa đóng",
+        "description": "Cùng định dạng body với `PATCH /public/sessions/current`. Chuỗi rỗng → null.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Phiên sau khi cập nhật",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AdminSession"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "SESSION_CLOSED — phiên đã đóng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
           }
         }
       }

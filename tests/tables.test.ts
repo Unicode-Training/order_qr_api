@@ -2,6 +2,10 @@ import JSZip from 'jszip';
 import supertest from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
+import { Category } from '../src/modules/menu/category.model';
+import { MenuItem } from '../src/modules/menu/menuItem.model';
+import { restaurantSettingsSchema } from '../src/modules/settings/settings.schema';
+import { replaceSettings } from '../src/modules/settings/settings.service';
 import { TableSession } from '../src/modules/sessions/tableSession.model';
 import { Table } from '../src/modules/tables/table.model';
 import { setTableStatus } from '../src/modules/tables/table.service';
@@ -306,6 +310,92 @@ describe('Khu vực, bàn và mã QR', () => {
 
       const res = await setStatus(table.id, { status: 'available' }).expect(409);
       expect(res.body.error.code).toBe('TABLE_IN_USE');
+    });
+  });
+
+  describe('currentSession trong DTO bàn', () => {
+    it('null khi trống; cập nhật khi khách mở phiên, đặt món, yêu cầu/thanh toán', async () => {
+      await replaceSettings(
+        restaurantSettingsSchema.parse({
+          name: 'Quán Test',
+          openingHours: [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({
+            dayOfWeek,
+            slots: [{ open: '00:00', close: '24:00' }],
+          })),
+          paymentMethods: ['cash'],
+        }),
+      );
+      const category = await Category.create({ name: 'Đồ uống', slug: 'do-uong' });
+      const tra = await MenuItem.create({
+        name: 'Trà đá',
+        slug: 'tra-da',
+        categoryId: category._id,
+        price: 5000,
+      });
+      const b1 = await createTable({ code: 'B01' });
+      const b2 = await createTable({ code: 'B02' });
+
+      const currentOf = async (id: string) =>
+        (await api().get(`/api/v1/admin/tables/${id}`).expect(200)).body.data.currentSession;
+      expect(await currentOf(b1.id)).toBeNull();
+
+      const opened = await supertest(app)
+        .post('/api/v1/public/sessions')
+        .send({ qrToken: b1.qrToken, guestCount: 3 })
+        .expect(201);
+      const token = opened.body.data.sessionToken as string;
+      const sessionId = opened.body.data.session.id as string;
+      expect(await currentOf(b1.id)).toMatchObject({
+        id: sessionId,
+        status: 'open',
+        guestCount: 3,
+        paymentRequestedAt: null,
+        orderCount: 0,
+      });
+
+      const guest = supertest(app);
+      const order = async (quantity: number) =>
+        (
+          await guest
+            .post('/api/v1/public/orders')
+            .set('X-Session-Token', token)
+            .send({ items: [{ menuItemId: tra._id.toString(), quantity }] })
+            .expect(201)
+        ).body.data as { id: string };
+      await order(1);
+      const toCancel = await order(2);
+      await guest
+        .post(`/api/v1/public/orders/${toCancel.id}/cancel`)
+        .set('X-Session-Token', token)
+        .expect(200);
+
+      // Danh sách: bàn có phiên + bàn trống, không lộ sessionToken
+      const list = await api().get('/api/v1/admin/tables').expect(200);
+      const byCode = Object.fromEntries(
+        list.body.data.map((t: { code: string; currentSession: unknown }) => [
+          t.code,
+          t.currentSession,
+        ]),
+      );
+      expect(byCode.B01).toMatchObject({ id: sessionId, orderCount: 1 });
+      expect(byCode.B02).toBeNull();
+      expect(JSON.stringify(list.body)).not.toContain(token);
+
+      await guest
+        .post('/api/v1/public/sessions/current/request-bill')
+        .set('X-Session-Token', token)
+        .send({ preferredMethod: 'cash' })
+        .expect(200);
+      const requested = await currentOf(b1.id);
+      expect(requested).toMatchObject({ status: 'payment_requested', orderCount: 1 });
+      expect(requested.paymentRequestedAt).toBeTruthy();
+
+      await api()
+        .post(`/api/v1/admin/sessions/${sessionId}/payments`)
+        .send({ method: 'cash', amountReceived: 100000, force: true })
+        .expect(201);
+      expect(await currentOf(b1.id)).toBeNull();
+      expect(await currentOf(b2.id)).toBeNull();
     });
   });
 
