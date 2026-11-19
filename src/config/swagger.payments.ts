@@ -116,7 +116,12 @@ export const paymentSchemas = {
     type: 'object',
     required: ['method'],
     properties: {
-      method: { type: 'string', enum: PAYMENT_METHODS },
+      method: {
+        type: 'string',
+        enum: PAYMENT_METHODS,
+        description:
+          'Phải nằm trong paymentMethods của cài đặt nhà hàng, nếu không → 422 PAYMENT_METHOD_UNAVAILABLE',
+      },
       amountReceived: {
         type: 'number',
         minimum: 0,

@@ -99,6 +99,8 @@ adminSessionsRouter.get(
  *         gửi `force=true` để vẫn thu, bản ghi lưu `forced=true` và `warnings`.
  *       - `amountReceived` < tổng → 422 `INSUFFICIENT_AMOUNT`; tiền thối `change = amountReceived − total`.
  *         Chuyển khoản/thẻ có thể bỏ trống `amountReceived` (= tổng).
+ *       - `method` chưa bật trong cài đặt (`paymentMethods`) → 422 `PAYMENT_METHOD_UNAVAILABLE`
+ *         (kèm `details.paymentMethods`); phiên vẫn mở, bàn giữ nguyên trạng thái.
  *
  *       Thành công: tạo Payment, phiên → `closed` (token cũ của khách bị từ chối, quét QR lại sẽ mở phiên mới),
  *       bàn → `available`, các yêu cầu phục vụ còn mở của phiên → `done`.
@@ -131,7 +133,9 @@ adminSessionsRouter.get(
  *           application/json:
  *             schema: { $ref: '#/components/schemas/ErrorResponse' }
  *       422:
- *         description: INSUFFICIENT_AMOUNT (tiền nhận chưa đủ), INVALID_DISCOUNT (giảm giá vượt tổng)
+ *         description: |
+ *           INSUFFICIENT_AMOUNT (tiền nhận chưa đủ), INVALID_DISCOUNT (giảm giá vượt tổng),
+ *           PAYMENT_METHOD_UNAVAILABLE (phương thức chưa bật trong cài đặt; `details.paymentMethods` = các phương thức đang bật)
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/ErrorResponse' }
