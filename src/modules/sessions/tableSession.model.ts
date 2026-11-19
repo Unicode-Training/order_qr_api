@@ -15,8 +15,11 @@ export function generateSessionToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
-/** Lý do đóng phiên: đã thanh toán, hoặc nhân viên huỷ phiên trống. */
-export const SESSION_CLOSE_REASONS = ['paid', 'cancelled'] as const;
+/**
+ * Lý do đóng phiên: đã thanh toán, nhân viên huỷ phiên trống, hoặc hệ thống tự đóng phiên trống
+ * bị bỏ quên quá `EMPTY_SESSION_TIMEOUT_MINUTES` (`expired`, `closedBy` = null).
+ */
+export const SESSION_CLOSE_REASONS = ['paid', 'cancelled', 'expired'] as const;
 export type SessionCloseReason = (typeof SESSION_CLOSE_REASONS)[number];
 
 export interface ITableSession {
@@ -34,7 +37,7 @@ export interface ITableSession {
   openedAt: Date;
   closedAt: Date | null;
   closeReason: SessionCloseReason | null;
-  /** Nhân viên đóng phiên (thu tiền / huỷ). */
+  /** Nhân viên đóng phiên (thu tiền / huỷ); null khi hệ thống tự đóng (`expired`). */
   closedBy: Types.ObjectId | null;
   /** Phương thức khách muốn dùng khi yêu cầu thanh toán. */
   preferredPaymentMethod: string | null;

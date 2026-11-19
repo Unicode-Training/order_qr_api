@@ -231,7 +231,7 @@ export const paymentSchemas = {
     properties: {
       id: idProp,
       status: { type: 'string', example: 'closed' },
-      closeReason: { type: 'string', enum: ['paid', 'cancelled'] },
+      closeReason: { type: 'string', enum: ['paid', 'cancelled', 'expired'] },
       closedAt: dateTime,
     },
   },
@@ -301,7 +301,7 @@ export const paymentSchemas = {
       paymentRequestedAt: { ...dateTime, nullable: true },
       preferredPaymentMethod: { type: 'string', enum: PAYMENT_METHODS, nullable: true },
       closedAt: { ...dateTime, nullable: true },
-      closeReason: { type: 'string', enum: ['paid', 'cancelled'], nullable: true },
+      closeReason: { type: 'string', enum: ['paid', 'cancelled', 'expired'], nullable: true },
       closedBy: {
         type: 'object',
         nullable: true,

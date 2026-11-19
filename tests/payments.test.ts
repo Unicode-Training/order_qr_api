@@ -7,6 +7,7 @@ import { Order } from '../src/modules/orders/order.model';
 import { toBusinessDate } from '../src/modules/orders/order.service';
 import { calculateBillTotals } from '../src/modules/orders/pricing';
 import { Payment } from '../src/modules/payments/payment.model';
+import { expireEmptySessions } from '../src/modules/payments/payment.service';
 import { ServiceRequest } from '../src/modules/serviceRequests/serviceRequest.model';
 import { TableSession } from '../src/modules/sessions/tableSession.model';
 import { restaurantSettingsSchema } from '../src/modules/settings/settings.schema';
@@ -458,6 +459,75 @@ describe('Yêu cầu thanh toán, thanh toán và đóng phiên', () => {
       const res = await admin.get(`/tables/${table.id}/bill`);
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe('NO_ACTIVE_SESSION');
+    });
+  });
+
+  describe('Tự đóng phiên trống bị bỏ quên (expireEmptySessions)', () => {
+    const MINUTE = 60_000;
+    const later = (minutes: number) => new Date(Date.now() + minutes * MINUTE);
+
+    it('phiên trống quá hạn → closed/expired, bàn available, yêu cầu nhanh done, token → 401', async () => {
+      const { token, id } = await openSession();
+      const call = await guest(token).post('/service-requests', { type: 'call_staff' });
+      expect(call.status, JSON.stringify(call.body)).toBe(201);
+      expect((await Table.findById(table.id))!.status).toBe('occupied');
+
+      // chưa quá hạn → giữ nguyên
+      expect((await expireEmptySessions(later(119), 120)).expired).toEqual([]);
+      // timeout = 0 → tắt
+      expect((await expireEmptySessions(later(1000), 0)).expired).toEqual([]);
+
+      const result = await expireEmptySessions(later(121), 120);
+      expect(result.expired).toEqual([id]);
+      const session = await TableSession.findById(id).lean();
+      expect(session).toMatchObject({ status: 'closed', isActive: false, closeReason: 'expired' });
+      expect(session!.closedBy).toBeNull();
+      expect((await Table.findById(table.id))!.status).toBe('available');
+      expect(await ServiceRequest.countDocuments({ sessionId: id, status: { $ne: 'done' } })).toBe(
+        0,
+      );
+
+      const current = await guest(token).get('/sessions/current');
+      expect(current.status).toBe(401);
+      expect(current.body.error.code).toBe('SESSION_CLOSED');
+
+      const list = await admin.get('/sessions?closeReason=expired');
+      expect(list.status, JSON.stringify(list.body)).toBe(200);
+      expect(list.body.data.map((s: { id: string }) => s.id)).toEqual([id]);
+
+      // khách sau quét QR → phiên mới
+      const next = await openSession();
+      expect(next.id).not.toBe(id);
+    });
+
+    it('phiên có đơn hoặc payment_requested → giữ nguyên; chỉ có đơn đã huỷ → vẫn đóng', async () => {
+      const withOrder = await openSession();
+      await placeOrder(withOrder.token);
+
+      const requested = await openSession(table2.qrToken);
+      const t3 = await Table.create({ code: 'B03', name: 'Bàn 03' });
+      // payment_requested không có món (đặt thẳng DB vì request-bill yêu cầu có món)
+      await TableSession.updateOne(
+        { _id: requested.id },
+        { $set: { status: 'payment_requested', paymentRequestedAt: new Date() } },
+      );
+
+      const onlyCancelled = await openSession(t3.qrToken);
+      const order = await placeOrder(onlyCancelled.token);
+      expect((await guest(onlyCancelled.token).post(`/orders/${order.id}/cancel`)).status).toBe(
+        200,
+      );
+
+      // đơn huỷ còn mới → tính là hoạt động gần đây
+      expect((await expireEmptySessions(later(60), 120)).expired).toEqual([]);
+
+      const result = await expireEmptySessions(later(180), 120);
+      expect(result.expired).toEqual([onlyCancelled.id]);
+      expect((await TableSession.findById(withOrder.id))!.status).toBe('open');
+      expect((await TableSession.findById(requested.id))!.status).toBe('payment_requested');
+      expect((await Table.findById(table.id))!.status).toBe('occupied');
+      expect((await Table.findById(t3._id))!.status).toBe('available');
+      expect((await guest(withOrder.token).get('/sessions/current')).status).toBe(200);
     });
   });
 
