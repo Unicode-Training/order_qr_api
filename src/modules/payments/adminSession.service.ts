@@ -191,7 +191,11 @@ export async function getSession(id: string): Promise<AdminSessionDetail> {
   const session = await findSessionOrThrow(id);
   const [orders, payment, bill] = await Promise.all([
     Order.find({ sessionId: session._id }).sort({ createdAt: 1, _id: 1 }).lean<LeanOrder[]>(),
-    Payment.findOne({ sessionId: session._id }).lean<IPayment & { _id: Types.ObjectId }>(),
+    // Phiên có thể có thanh toán đã huỷ (void) + thanh toán thu lại: ưu tiên bản completed, rồi mới nhất.
+    Payment.find({ sessionId: session._id })
+      .sort({ paidAt: -1, _id: -1 })
+      .lean<(IPayment & { _id: Types.ObjectId })[]>()
+      .then((list) => list.find((p) => p.status !== 'voided') ?? list[0] ?? null),
     session.status === 'closed' ? Promise.resolve(null) : computeBill(session).then((c) => c.bill),
   ]);
 

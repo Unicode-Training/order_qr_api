@@ -177,7 +177,53 @@ export const paymentSchemas = {
         type: 'object',
         properties: { id: idProp, fullName: { type: 'string', nullable: true } },
       },
+      status: {
+        type: 'string',
+        enum: ['completed', 'voided'],
+        description: 'voided = đã huỷ (ghi nhầm), không tính vào doanh thu',
+      },
+      voidedAt: { ...dateTime, nullable: true },
+      voidedBy: {
+        type: 'object',
+        nullable: true,
+        properties: { id: idProp, fullName: { type: 'string', nullable: true } },
+      },
+      voidReason: { type: 'string', nullable: true, example: 'Ghi nhầm phương thức' },
       createdAt: dateTime,
+    },
+  },
+  VoidPaymentBody: {
+    type: 'object',
+    required: ['reason'],
+    properties: {
+      reason: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 300,
+        example: 'Ghi nhầm tiền mặt, khách chuyển khoản',
+      },
+      reopenSession: {
+        type: 'boolean',
+        default: true,
+        description:
+          'Mở lại phiên (payment_requested, bàn needs_payment) để thu lại. Bàn đã có phiên khác → 409.',
+      },
+    },
+  },
+  VoidPaymentResult: {
+    type: 'object',
+    properties: {
+      payment: { $ref: '#/components/schemas/Payment' },
+      session: {
+        type: 'object',
+        nullable: true,
+        description: 'null khi reopenSession=false',
+        properties: { id: idProp, status: { type: 'string', example: 'payment_requested' } },
+      },
+      table: {
+        nullable: true,
+        allOf: [{ $ref: '#/components/schemas/PaymentTableRef' }],
+      },
     },
   },
   ClosedSessionInfo: {

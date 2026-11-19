@@ -3598,9 +3598,91 @@
               }
             }
           },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "voided"
+            ],
+            "description": "voided = đã huỷ (ghi nhầm), không tính vào doanh thu"
+          },
+          "voidedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "voidedBy": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "example": "665f1c2e8b3a4d0012345678"
+              },
+              "fullName": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "voidReason": {
+            "type": "string",
+            "nullable": true,
+            "example": "Ghi nhầm phương thức"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "VoidPaymentBody": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "example": "Ghi nhầm tiền mặt, khách chuyển khoản"
+          },
+          "reopenSession": {
+            "type": "boolean",
+            "default": true,
+            "description": "Mở lại phiên (payment_requested, bàn needs_payment) để thu lại. Bàn đã có phiên khác → 409."
+          }
+        }
+      },
+      "VoidPaymentResult": {
+        "type": "object",
+        "properties": {
+          "payment": {
+            "$ref": "#/components/schemas/Payment"
+          },
+          "session": {
+            "type": "object",
+            "nullable": true,
+            "description": "null khi reopenSession=false",
+            "properties": {
+              "id": {
+                "type": "string",
+                "example": "665f1c2e8b3a4d0012345678"
+              },
+              "status": {
+                "type": "string",
+                "example": "payment_requested"
+              }
+            }
+          },
+          "table": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentTableRef"
+              }
+            ]
           }
         }
       },
@@ -7181,7 +7263,8 @@
         "tags": [
           "Payments"
         ],
-        "summary": "Danh sách thanh toán (lọc theo ngày, phương thức, bàn) + tổng hợp",
+        "summary": "Danh sách thanh toán (lọc theo ngày, phương thức, bàn, trạng thái) + tổng hợp",
+        "description": "Mặc định chỉ trả thanh toán còn hiệu lực (`status=completed`); `voided` = chỉ bản ghi đã huỷ,\n`all` = cả hai. `meta.summary` tính theo đúng bộ lọc đó (doanh thu thực = mặc định `completed`).\n",
         "security": [
           {
             "bearerAuth": []
@@ -7252,6 +7335,19 @@
             "name": "tableId",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "completed",
+                "voided",
+                "all"
+              ],
+              "default": "completed"
             }
           }
         ],
@@ -7348,6 +7444,83 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/admin/payments/{id}/void": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Huỷ (void) thanh toán ghi nhầm và (mặc định) mở lại phiên để thu lại",
+        "description": "Dùng khi thu ngân ghi nhầm số tiền / phương thức / bàn. Bản ghi được giữ lại với `status=voided`\n(kèm `voidedAt`, `voidedBy`, `voidReason`) và không còn tính vào doanh thu (dashboard, `/admin/payments`).\n\n`reopenSession` (mặc định `true`): phiên → `payment_requested` (mở lại, token cũ của khách dùng lại được),\nbàn → `needs_payment`; sau đó thu lại bằng `POST /admin/sessions/{id}/payments` (tạo bản ghi completed mới).\nChỉ mở lại khi bàn KHÔNG có phiên khác đang mở — nếu có → 409 `TABLE_HAS_ACTIVE_SESSION` và thanh toán\nKHÔNG bị huỷ (gửi `reopenSession=false` để chỉ huỷ thanh toán). Bước sau lỗi → hoàn tác best-effort.\n",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidPaymentBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã huỷ thanh toán",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/VoidPaymentResult"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "PAYMENT_ALREADY_VOIDED (đã huỷ trước đó / bấm 2 lần), TABLE_HAS_ACTIVE_SESSION (bàn đã có phiên mới),\nSESSION_NOT_FOUND / SESSION_NOT_CLOSED (dữ liệu phiên không khớp)\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
           }
         }
       }

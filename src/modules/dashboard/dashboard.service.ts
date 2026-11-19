@@ -5,7 +5,7 @@ import { MenuItem } from '../menu/menuItem.model';
 import { toAdminOrderDtos, type AdminOrderDto } from '../orders/adminOrder.service';
 import { Order } from '../orders/order.model';
 import type { LeanOrder } from '../orders/order.service';
-import { Payment } from '../payments/payment.model';
+import { COUNTED_PAYMENT_FILTER, Payment } from '../payments/payment.model';
 import { ServiceRequest } from '../serviceRequests/serviceRequest.model';
 import { TableSession } from '../sessions/tableSession.model';
 import { PAYMENT_METHODS, type PaymentMethod } from '../settings/settings.schema';
@@ -102,7 +102,7 @@ export async function getSummary(query: SummaryQuery): Promise<DashboardSummary>
   ] = await Promise.all([
     getCurrency(),
     Payment.aggregate<{ _id: string; total: number; count: number }>([
-      { $match: { businessDate: { $in: days } } },
+      { $match: { businessDate: { $in: days }, ...COUNTED_PAYMENT_FILTER } },
       { $group: { _id: '$businessDate', total: { $sum: '$total' }, count: { $sum: 1 } } },
     ]),
     Order.aggregate<{ _id: { date: string; cancelled: boolean }; count: number }>([
@@ -289,7 +289,7 @@ export async function getRevenueSeries(query: RevenueQuery): Promise<RevenueSeri
   const [currency, groups] = await Promise.all([
     getCurrency(),
     Payment.aggregate<{ _id: string; revenue: number; invoices: number; guests: number }>([
-      { $match: { paidAt: { $gte: start, $lt: end } } },
+      { $match: { paidAt: { $gte: start, $lt: end }, ...COUNTED_PAYMENT_FILTER } },
       {
         $lookup: {
           from: TableSession.collection.collectionName,
@@ -457,7 +457,7 @@ export async function getPaymentMethods(query: PaymentMethodsQuery): Promise<Pay
   const [currency, groups] = await Promise.all([
     getCurrency(),
     Payment.aggregate<{ _id: PaymentMethod; count: number; amount: number }>([
-      { $match: { paidAt: { $gte: start, $lt: end } } },
+      { $match: { paidAt: { $gte: start, $lt: end }, ...COUNTED_PAYMENT_FILTER } },
       { $group: { _id: '$method', count: { $sum: 1 }, amount: { $sum: '$total' } } },
     ]),
   ]);

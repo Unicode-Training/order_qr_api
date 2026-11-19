@@ -9,6 +9,7 @@ import {
   listPaymentsQuerySchema,
   moveSessionSchema,
   recordPaymentSchema,
+  voidPaymentSchema,
 } from './payment.schema';
 
 /**
@@ -373,7 +374,10 @@ export const adminPaymentsRouter = Router();
  * /admin/payments:
  *   get:
  *     tags: [Payments]
- *     summary: Danh sách thanh toán (lọc theo ngày, phương thức, bàn) + tổng hợp
+ *     summary: Danh sách thanh toán (lọc theo ngày, phương thức, bàn, trạng thái) + tổng hợp
+ *     description: |
+ *       Mặc định chỉ trả thanh toán còn hiệu lực (`status=completed`); `voided` = chỉ bản ghi đã huỷ,
+ *       `all` = cả hai. `meta.summary` tính theo đúng bộ lọc đó (doanh thu thực = mặc định `completed`).
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
@@ -392,6 +396,9 @@ export const adminPaymentsRouter = Router();
  *         schema: { type: string, format: date, example: '2026-11-30' }
  *       - { in: query, name: method, schema: { type: string, enum: [cash, bank_transfer, card] } }
  *       - { in: query, name: tableId, schema: { type: string } }
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [completed, voided, all], default: completed }
  *     responses:
  *       200:
  *         description: Danh sách thanh toán; `meta.summary` tổng hợp theo toàn bộ bộ lọc (không chỉ trang hiện tại)
@@ -440,3 +447,52 @@ adminPaymentsRouter.get(
  *       404: { $ref: '#/components/responses/NotFound' }
  */
 adminPaymentsRouter.get('/:id', validate({ params: idParamsSchema }), paymentController.getPayment);
+
+/**
+ * @openapi
+ * /admin/payments/{id}/void:
+ *   post:
+ *     tags: [Payments]
+ *     summary: Huỷ (void) thanh toán ghi nhầm và (mặc định) mở lại phiên để thu lại
+ *     description: |
+ *       Dùng khi thu ngân ghi nhầm số tiền / phương thức / bàn. Bản ghi được giữ lại với `status=voided`
+ *       (kèm `voidedAt`, `voidedBy`, `voidReason`) và không còn tính vào doanh thu (dashboard, `/admin/payments`).
+ *
+ *       `reopenSession` (mặc định `true`): phiên → `payment_requested` (mở lại, token cũ của khách dùng lại được),
+ *       bàn → `needs_payment`; sau đó thu lại bằng `POST /admin/sessions/{id}/payments` (tạo bản ghi completed mới).
+ *       Chỉ mở lại khi bàn KHÔNG có phiên khác đang mở — nếu có → 409 `TABLE_HAS_ACTIVE_SESSION` và thanh toán
+ *       KHÔNG bị huỷ (gửi `reopenSession=false` để chỉ huỷ thanh toán). Bước sau lỗi → hoàn tác best-effort.
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string } }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema: { $ref: '#/components/schemas/VoidPaymentBody' }
+ *     responses:
+ *       200:
+ *         description: Đã huỷ thanh toán
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 data: { $ref: '#/components/schemas/VoidPaymentResult' }
+ *       400: { $ref: '#/components/responses/ValidationError' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       404: { $ref: '#/components/responses/NotFound' }
+ *       409:
+ *         description: |
+ *           PAYMENT_ALREADY_VOIDED (đã huỷ trước đó / bấm 2 lần), TABLE_HAS_ACTIVE_SESSION (bàn đã có phiên mới),
+ *           SESSION_NOT_FOUND / SESSION_NOT_CLOSED (dữ liệu phiên không khớp)
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ */
+adminPaymentsRouter.post(
+  '/:id/void',
+  validate({ params: idParamsSchema, body: voidPaymentSchema }),
+  paymentController.voidPayment,
+);

@@ -68,14 +68,31 @@ export const listPaymentsQuerySchema = paginationQuerySchema
     to: dateOnly.optional(),
     method: paymentMethodSchema.optional(),
     tableId: objectIdSchema.optional(),
+    /** completed (mặc định — chỉ thanh toán còn hiệu lực), voided (đã huỷ) hoặc all. */
+    status: z
+      .enum(['completed', 'voided', 'all'], {
+        message: 'status phải là completed, voided hoặc all',
+      })
+      .default('completed'),
   })
   .refine((q) => !q.from || !q.to || q.from <= q.to, {
     path: ['to'],
     message: '`to` phải sau hoặc bằng `from`',
   });
 
+export const voidPaymentSchema = z.object({
+  reason: z
+    .string('Vui lòng nhập lý do huỷ')
+    .trim()
+    .min(1, 'Vui lòng nhập lý do huỷ')
+    .max(300, 'Tối đa 300 ký tự'),
+  /** Mở lại phiên (→ payment_requested, bàn → needs_payment) để thu lại. Mặc định true. */
+  reopenSession: z.boolean('reopenSession phải là boolean').default(true),
+});
+
 export type RequestBillInput = z.output<typeof requestBillSchema>;
 export type RecordPaymentInput = z.output<typeof recordPaymentSchema>;
 export type MoveSessionInput = z.output<typeof moveSessionSchema>;
 export type CancelSessionInput = z.output<typeof cancelSessionSchema>;
 export type ListPaymentsQuery = z.output<typeof listPaymentsQuerySchema>;
+export type VoidPaymentInput = z.output<typeof voidPaymentSchema>;
