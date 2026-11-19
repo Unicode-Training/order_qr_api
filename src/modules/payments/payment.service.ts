@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { env } from '../../config/env';
 import { AppError } from '../../utils/AppError';
 import { logger } from '../../utils/logger';
 import {
@@ -121,23 +122,27 @@ export interface TableRef {
 
 // ------------------------------------------------------------------ Đóng / mở lại phiên (nội bộ)
 
-/** Đóng phiên nguyên tử (chỉ khi còn mở). Trả null nếu phiên đã bị đóng bởi request khác. */
+/**
+ * Đóng phiên nguyên tử (chỉ khi còn mở). Trả null nếu phiên đã bị đóng bởi request khác.
+ * `extraFilter`: điều kiện thêm (vd. tự đóng chỉ khi phiên vẫn `open` và chưa bị sửa).
+ */
 async function closeSessionAtomically(
   sessionId: Types.ObjectId,
   reason: SessionCloseReason,
-  closedBy: string,
+  closedBy: string | null,
   now: Date,
+  extraFilter: Record<string, unknown> = {},
 ): Promise<LeanSession | null> {
   // findOneAndUpdate không chạy hook pre('validate') → tự đặt isActive=false.
   return TableSession.findOneAndUpdate(
-    { _id: sessionId, isActive: true },
+    { ...extraFilter, _id: sessionId, isActive: true },
     {
       $set: {
         status: 'closed',
         isActive: false,
         closedAt: now,
         closeReason: reason,
-        closedBy: new Types.ObjectId(closedBy),
+        closedBy: closedBy ? new Types.ObjectId(closedBy) : null,
       },
     },
     { returnDocument: 'after', lean: true },
@@ -167,7 +172,7 @@ async function reopenSession(previous: LeanSession): Promise<void> {
 /** Sau khi phiên đóng: bàn về available (nếu bàn không còn phiên khác), yêu cầu phục vụ → done. */
 async function releaseTableAfterClose(
   session: LeanSession,
-  closedBy: string,
+  closedBy: string | null,
   now: Date,
 ): Promise<TableRef> {
   const hasOther = await TableSession.exists({ tableId: session.tableId, isActive: true });
@@ -451,6 +456,73 @@ export async function cancelSession(
   }
   const table = await releaseTableAfterClose(closed, userId, now);
   return { session: toClosedInfo(closed), table };
+}
+
+// ------------------------------------------------------------------ Hệ thống: tự đóng phiên trống
+
+export interface ExpireEmptySessionsResult {
+  /** Id các phiên vừa được đóng với closeReason = expired. */
+  expired: string[];
+}
+
+/** Phiên có đơn nào chưa huỷ không (đơn huỷ không tính là "có món"). */
+const hasLiveOrders = (sessionId: Types.ObjectId) =>
+  Order.exists({ sessionId, status: { $ne: 'cancelled' } });
+
+/**
+ * Tự đóng các phiên trống bị bỏ quên (khách quét QR rồi bỏ đi): phiên `open` (không đụng
+ * `payment_requested`) không có đơn nào khác `cancelled`, và hoạt động cuối cùng — `openedAt`,
+ * `updatedAt` của phiên và của mọi đơn (kể cả đơn đã huỷ) — cũ hơn `timeoutMinutes`.
+ * Dùng lại quy trình của `cancelSession`: đóng nguyên tử (closeReason `expired`, closedBy null),
+ * kiểm tra lại không có đơn sau khi đóng (khách vừa đặt món → mở lại), bàn → available,
+ * yêu cầu nhanh còn mở → done. `timeoutMinutes <= 0` → không làm gì.
+ * Lỗi của từng phiên chỉ được log, không chặn các phiên khác.
+ */
+export async function expireEmptySessions(
+  now = new Date(),
+  timeoutMinutes = env.EMPTY_SESSION_TIMEOUT_MINUTES,
+): Promise<ExpireEmptySessionsResult> {
+  const expired: string[] = [];
+  if (timeoutMinutes <= 0) return { expired };
+  const cutoff = new Date(now.getTime() - timeoutMinutes * 60_000);
+
+  const candidates = await TableSession.find({
+    status: 'open',
+    isActive: true,
+    openedAt: { $lt: cutoff },
+    updatedAt: { $lt: cutoff },
+  })
+    .sort({ openedAt: 1 })
+    .lean<LeanSession[]>();
+
+  for (const session of candidates) {
+    try {
+      const [liveOrder, recentOrder] = await Promise.all([
+        hasLiveOrders(session._id),
+        Order.exists({ sessionId: session._id, updatedAt: { $gte: cutoff } }),
+      ]);
+      if (liveOrder || recentOrder) continue;
+
+      // Chỉ đóng khi phiên vẫn y như lúc đọc (chưa yêu cầu thanh toán / chưa được sửa).
+      const closed = await closeSessionAtomically(session._id, 'expired', null, now, {
+        status: 'open',
+        updatedAt: session.updatedAt,
+      });
+      if (!closed) continue;
+      if (await hasLiveOrders(session._id)) {
+        await reopenSession(session); // khách vừa đặt món trong lúc đóng
+        continue;
+      }
+      await releaseTableAfterClose(closed, null, now);
+      expired.push(closed._id.toString());
+    } catch (err) {
+      logger.error(`Không tự đóng được phiên trống ${session._id.toString()}: ${String(err)}`);
+    }
+  }
+  if (expired.length > 0) {
+    logger.info(`Đã tự đóng ${expired.length} phiên trống quá ${timeoutMinutes} phút`);
+  }
+  return { expired };
 }
 
 export interface MoveSessionResult {

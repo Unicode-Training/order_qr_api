@@ -31,6 +31,11 @@ const envSchema = z.object({
   PUBLIC_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(600),
   /** Số thao tác ghi tối đa / cửa sổ: mở phiên (theo IP), quote/đặt/huỷ đơn (theo phiên bàn). */
   PUBLIC_WRITE_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(30),
+  /**
+   * Tự đóng phiên `open` không có món (khách quét QR rồi bỏ đi) sau số phút không hoạt động.
+   * 0 = tắt.
+   */
+  EMPTY_SESSION_TIMEOUT_MINUTES: z.coerce.number().int().min(0).default(120),
   CLIENT_URL: z.url('CLIENT_URL phải là URL hợp lệ'),
   CORS_ORIGINS: z
     .string()

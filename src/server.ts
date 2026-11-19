@@ -2,11 +2,13 @@ import type { Server } from 'node:http';
 import { createApp } from './app';
 import { connectDatabase, disconnectDatabase } from './config/database';
 import { env } from './config/env';
+import { startEmptySessionExpiryJob } from './modules/payments/sessionExpiry.job';
 import { createShutdownHandler, registerShutdownSignals } from './utils/gracefulShutdown';
 import { logger } from './utils/logger';
 
 async function bootstrap(): Promise<void> {
   await connectDatabase();
+  const expiryJob = startEmptySessionExpiryJob();
 
   const app = createApp();
   const server: Server = app.listen(env.PORT, () => {
@@ -17,7 +19,15 @@ async function bootstrap(): Promise<void> {
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000;
 
-  registerShutdownSignals(createShutdownHandler({ server, onClose: disconnectDatabase }));
+  registerShutdownSignals(
+    createShutdownHandler({
+      server,
+      onClose: async () => {
+        await expiryJob.stop();
+        await disconnectDatabase();
+      },
+    }),
+  );
 }
 
 bootstrap().catch((err: unknown) => {
