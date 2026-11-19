@@ -31,13 +31,19 @@ import {
   type BillOrderRef,
   type LeanSession,
 } from './bill.service';
-import { Payment, type IPayment } from './payment.model';
+import {
+  COUNTED_PAYMENT_FILTER,
+  Payment,
+  type IPayment,
+  type PaymentStatus,
+} from './payment.model';
 import type {
   CancelSessionInput,
   ListPaymentsQuery,
   MoveSessionInput,
   RecordPaymentInput,
   RequestBillInput,
+  VoidPaymentInput,
 } from './payment.schema';
 
 type LeanPayment = IPayment & { _id: Types.ObjectId };
@@ -67,10 +73,15 @@ export interface PaymentDto {
   paidAt: Date;
   businessDate: string;
   cashier: { id: string; fullName: string | null };
+  status: PaymentStatus;
+  voidedAt: Date | null;
+  voidedBy: { id: string; fullName: string | null } | null;
+  voidReason: string | null;
   createdAt: Date;
 }
 
-function toPaymentDto(payment: LeanPayment, cashierName: string | null): PaymentDto {
+function toPaymentDto(payment: LeanPayment, names: Map<string, string>): PaymentDto {
+  const voidedBy = payment.voidedBy?.toString() ?? null;
   return {
     id: payment._id.toString(),
     sessionId: payment.sessionId.toString(),
@@ -93,18 +104,29 @@ function toPaymentDto(payment: LeanPayment, cashierName: string | null): Payment
     warnings: payment.warnings ?? [],
     paidAt: payment.paidAt,
     businessDate: payment.businessDate,
-    cashier: { id: payment.cashierId.toString(), fullName: cashierName },
+    cashier: {
+      id: payment.cashierId.toString(),
+      fullName: names.get(payment.cashierId.toString()) ?? null,
+    },
+    status: payment.status ?? 'completed',
+    voidedAt: payment.voidedAt ?? null,
+    voidedBy: voidedBy ? { id: voidedBy, fullName: names.get(voidedBy) ?? null } : null,
+    voidReason: payment.voidReason ?? null,
     createdAt: payment.createdAt,
   };
 }
 
 export async function toPaymentDtos(payments: LeanPayment[]): Promise<PaymentDto[]> {
-  const cashierIds = [...new Set(payments.map((p) => p.cashierId.toString()))];
-  const users = await User.find({ _id: { $in: cashierIds } })
+  const userIds = new Set<string>();
+  for (const p of payments) {
+    userIds.add(p.cashierId.toString());
+    if (p.voidedBy) userIds.add(p.voidedBy.toString());
+  }
+  const users = await User.find({ _id: { $in: [...userIds] } })
     .select('fullName')
     .lean();
   const names = new Map(users.map((user) => [user._id.toString(), user.fullName]));
-  return payments.map((p) => toPaymentDto(p, names.get(p.cashierId.toString()) ?? null));
+  return payments.map((p) => toPaymentDto(p, names));
 }
 
 export interface ClosedSessionInfo {
@@ -619,6 +641,8 @@ export interface ListPaymentsResult {
 
 export async function listPayments(query: ListPaymentsQuery): Promise<ListPaymentsResult> {
   const filter: Record<string, unknown> = {};
+  if (query.status === 'completed') Object.assign(filter, COUNTED_PAYMENT_FILTER);
+  else if (query.status === 'voided') filter.status = 'voided';
   if (query.from || query.to) {
     filter.businessDate = {
       ...(query.from ? { $gte: query.from } : {}),
@@ -663,6 +687,155 @@ export async function listPayments(query: ListPaymentsQuery): Promise<ListPaymen
       },
     },
   };
+}
+
+// ------------------------------------------------------------------ Huỷ (void) thanh toán ghi nhầm
+
+export interface VoidPaymentResult {
+  payment: PaymentDto;
+  /** Phiên sau khi mở lại (null nếu reopenSession=false). */
+  session: { id: string; status: SessionStatus } | null;
+  /** Bàn sau khi mở lại phiên (null nếu reopenSession=false). */
+  table: TableRef | null;
+}
+
+/**
+ * Huỷ thanh toán ghi nhầm (sai số tiền / phương thức / bàn). Bản ghi giữ lại với status=voided
+ * và không còn được tính vào doanh thu. Mặc định mở lại phiên (→ payment_requested, bàn → needs_payment)
+ * để thu ngân thu lại với thông tin đúng; chỉ mở lại khi bàn chưa có phiên khác đang mở.
+ */
+export async function voidPayment(
+  id: string,
+  input: VoidPaymentInput,
+  userId: string,
+  now = new Date(),
+): Promise<VoidPaymentResult> {
+  const current = await Payment.findById(id).lean<LeanPayment>();
+  if (!current) throw AppError.notFound('Không tìm thấy thanh toán');
+  const alreadyVoided = () =>
+    new AppError(409, 'PAYMENT_ALREADY_VOIDED', 'Thanh toán này đã được huỷ trước đó');
+  if (current.status === 'voided') throw alreadyVoided();
+
+  // Kiểm tra sớm (trước khi void) để trả lỗi rõ ràng; bước mở lại phiên vẫn được unique index bảo vệ.
+  let previous: LeanSession | null = null;
+  if (input.reopenSession) {
+    previous = (await TableSession.findById(current.sessionId).lean()) as LeanSession | null;
+    if (!previous) {
+      throw new AppError(409, 'SESSION_NOT_FOUND', 'Không tìm thấy phiên của thanh toán này');
+    }
+    if (previous.status !== 'closed') {
+      // Không xảy ra trong luồng bình thường (thanh toán luôn đóng phiên) — phòng dữ liệu lệch.
+      throw new AppError(409, 'SESSION_NOT_CLOSED', 'Phiên của thanh toán này vẫn đang mở');
+    }
+    await assertTableFree(previous.tableId);
+  }
+
+  // 1) Void có điều kiện — bấm 2 lần / 2 người cùng huỷ → chỉ một request thắng.
+  const voided = await Payment.findOneAndUpdate(
+    { _id: current._id, ...COUNTED_PAYMENT_FILTER },
+    {
+      $set: {
+        status: 'voided',
+        voidedAt: now,
+        voidedBy: new Types.ObjectId(userId),
+        voidReason: input.reason,
+      },
+    },
+    { returnDocument: 'after', lean: true },
+  ).lean<LeanPayment>();
+  if (!voided) throw alreadyVoided();
+
+  if (!previous) {
+    const [dto] = await toPaymentDtos([voided]);
+    return { payment: dto!, session: null, table: null };
+  }
+
+  // 2) Mở lại phiên (unique (tableId, isActive) chặn khi khách vừa quét QR mở phiên mới).
+  let reopened: LeanSession | null = null;
+  try {
+    reopened = (await TableSession.findOneAndUpdate(
+      { _id: previous._id, status: 'closed' },
+      {
+        $set: {
+          status: 'payment_requested',
+          isActive: true,
+          closedAt: null,
+          closeReason: null,
+          closedBy: null,
+          paymentRequestedAt: previous.paymentRequestedAt ?? now,
+        },
+      },
+      { returnDocument: 'after', lean: true },
+    )) as LeanSession | null;
+    if (!reopened) {
+      throw new AppError(409, 'SESSION_NOT_CLOSED', 'Phiên của thanh toán này vừa thay đổi');
+    }
+    // 3) Bàn → needs_payment.
+    const table = await Table.findByIdAndUpdate(
+      reopened.tableId,
+      { $set: { status: 'needs_payment', reservationNote: null } },
+      { returnDocument: 'after', lean: true },
+    );
+    const [dto] = await toPaymentDtos([voided]);
+    return {
+      payment: dto!,
+      session: { id: reopened._id.toString(), status: reopened.status },
+      table: {
+        id: reopened.tableId.toString(),
+        code: table?.code ?? voided.tableCode,
+        status: table?.status ?? 'needs_payment',
+      },
+    };
+  } catch (err) {
+    // Hoàn tác best-effort: đóng lại phiên (nếu đã mở) rồi khôi phục thanh toán.
+    if (reopened) await recloseSession(previous);
+    await restorePayment(voided);
+    if ((err as { code?: unknown }).code === 11000) throw tableHasActiveSession();
+    throw err;
+  }
+}
+
+const tableHasActiveSession = () =>
+  new AppError(
+    409,
+    'TABLE_HAS_ACTIVE_SESSION',
+    'Bàn đang có phiên khác — không thể mở lại phiên cũ. Gửi reopenSession=false để chỉ huỷ thanh toán.',
+  );
+
+async function assertTableFree(tableId: Types.ObjectId): Promise<void> {
+  if (await TableSession.exists({ tableId, isActive: true })) throw tableHasActiveSession();
+}
+
+async function restorePayment(voided: LeanPayment): Promise<void> {
+  try {
+    await Payment.updateOne(
+      { _id: voided._id, status: 'voided', voidedAt: voided.voidedAt },
+      { $set: { status: 'completed', voidedAt: null, voidedBy: null, voidReason: null } },
+    );
+  } catch (err) {
+    logger.error(`Không khôi phục được thanh toán ${voided._id.toString()}: ${String(err)}`);
+  }
+}
+
+/** Hoàn tác mở lại phiên: đưa về đúng trạng thái đóng trước đó. */
+async function recloseSession(previous: LeanSession): Promise<void> {
+  try {
+    await TableSession.updateOne(
+      { _id: previous._id, isActive: true },
+      {
+        $set: {
+          status: 'closed',
+          isActive: false,
+          closedAt: previous.closedAt,
+          closeReason: previous.closeReason,
+          closedBy: previous.closedBy,
+          paymentRequestedAt: previous.paymentRequestedAt ?? null,
+        },
+      },
+    );
+  } catch (err) {
+    logger.error(`Không đóng lại được phiên ${previous._id.toString()}: ${String(err)}`);
+  }
 }
 
 export async function getPayment(id: string): Promise<PaymentDto> {

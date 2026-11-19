@@ -9,6 +9,7 @@ import type {
   MoveSessionInput,
   RecordPaymentInput,
   RequestBillInput,
+  VoidPaymentInput,
 } from './payment.schema';
 import * as paymentService from './payment.service';
 
@@ -70,4 +71,15 @@ export async function listPayments(req: Request, res: Response): Promise<void> {
 
 export async function getPayment(req: IdReq, res: Response): Promise<void> {
   sendSuccess(res, await paymentService.getPayment(req.params.id));
+}
+
+export async function voidPayment(req: IdReq, res: Response): Promise<void> {
+  sendSuccess(
+    res,
+    await paymentService.voidPayment(
+      req.params.id,
+      req.body as VoidPaymentInput,
+      getAuthUser(req).id,
+    ),
+  );
 }

@@ -2,12 +2,15 @@ import type { Server } from 'node:http';
 import { createApp } from './app';
 import { connectDatabase, disconnectDatabase } from './config/database';
 import { env } from './config/env';
+import { migratePaymentIndexes } from './modules/payments/payment.model';
 import { startEmptySessionExpiryJob } from './modules/payments/sessionExpiry.job';
 import { createShutdownHandler, registerShutdownSignals } from './utils/gracefulShutdown';
 import { logger } from './utils/logger';
 
 async function bootstrap(): Promise<void> {
   await connectDatabase();
+  // Nâng cấp index Payment (unique sessionId → unique một phần theo status=completed). Idempotent.
+  await migratePaymentIndexes();
   const expiryJob = startEmptySessionExpiryJob();
 
   const app = createApp();
