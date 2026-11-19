@@ -9,6 +9,7 @@ import {
   qrExportQuerySchema,
   qrImageQuerySchema,
   qrTokenParamsSchema,
+  setTableStatusSchema,
   updateTableSchema,
 } from './table.schema';
 
@@ -175,7 +176,7 @@ adminTablesRouter.get(
  *   patch:
  *     tags: [Tables]
  *     summary: Cập nhật bàn
- *     description: Trạng thái (`status`) không sửa ở đây — do module phiên bàn cập nhật.
+ *     description: Trạng thái (`status`) không sửa ở đây — đặt/bỏ đặt trước dùng `PATCH /admin/tables/{id}/status`; occupied/needs_payment do module phiên bàn cập nhật.
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
  *       required: true
@@ -234,6 +235,48 @@ adminTablesRouter.patch(
   tableController.update,
 );
 adminTablesRouter.delete('/:id', validate({ params: idParamsSchema }), tableController.remove);
+
+/**
+ * @openapi
+ * /admin/tables/{id}/status:
+ *   patch:
+ *     tags: [Tables]
+ *     summary: Đặt bàn trước (reserved) hoặc trả bàn về trống (available)
+ *     description: |
+ *       Chỉ đổi được khi bàn đang hoạt động, đang `available`/`reserved` và không có phiên chưa đóng.
+ *       Cập nhật có điều kiện theo trạng thái cũ: nếu khách vừa quét QR mở phiên thì trả 409 thay vì ghi đè.
+ *       Khách vẫn mở phiên được trên bàn `reserved` (bàn → `occupied`, `reservationNote` bị xoá).
+ *       Về `available` thì `reservationNote` = null.
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string } }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema: { $ref: '#/components/schemas/SetTableStatusBody' }
+ *     responses:
+ *       200:
+ *         description: Bàn sau khi cập nhật
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 data: { $ref: '#/components/schemas/Table' }
+ *       400: { $ref: '#/components/responses/ValidationError' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       404: { $ref: '#/components/responses/NotFound' }
+ *       409:
+ *         description: Bàn đang phục vụ / chờ thanh toán / có phiên chưa đóng (TABLE_IN_USE) hoặc bàn đã tắt (TABLE_INACTIVE)
+ *         content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+ */
+adminTablesRouter.patch(
+  '/:id/status',
+  validate({ params: idParamsSchema, body: setTableStatusSchema }),
+  tableController.setStatus,
+);
 
 /**
  * @openapi

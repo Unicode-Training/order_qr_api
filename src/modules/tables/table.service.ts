@@ -8,13 +8,22 @@ import {
 } from '../../utils/pagination';
 import { Area } from '../areas/area.model';
 import { assertAreaExists } from '../areas/area.service';
+// Chỉ đọc model phiên (file lá, không import ngược tables) để kiểm tra bàn có phiên đang mở.
+import { TableSession } from '../sessions/tableSession.model';
 import { getPublicRestaurant, type PublicRestaurant } from '../settings/settings.service';
 import { buildTableQrUrl, QR_CONTENT_TYPES, renderQr, renderQrPng, type QrFormat } from './qr';
-import { generateQrToken, Table, type ITable, type TableStatus } from './table.model';
+import {
+  generateQrToken,
+  MANUAL_TABLE_STATUSES,
+  Table,
+  type ITable,
+  type TableStatus,
+} from './table.model';
 import type {
   CreateTableInput,
   ListTablesQuery,
   QrExportQuery,
+  SetTableStatusInput,
   UpdateTableInput,
 } from './table.schema';
 
@@ -38,6 +47,8 @@ export interface TableDto {
   capacity: number;
   isActive: boolean;
   status: TableStatus;
+  /** Ghi chú đặt bàn — chỉ có khi `reserved`. */
+  reservationNote: string | null;
   qrToken: string;
   /** Nội dung mã QR: `${CLIENT_URL}/t/${qrToken}`. */
   qrUrl: string;
@@ -83,6 +94,7 @@ function toTableDto(table: LeanTable, areas: Map<string, TableAreaRef>): TableDt
     capacity: table.capacity,
     isActive: table.isActive,
     status: table.status,
+    reservationNote: table.reservationNote ?? null,
     qrToken: table.qrToken,
     qrUrl: buildTableQrUrl(table.qrToken),
     qrTokenUpdatedAt: table.qrTokenUpdatedAt,
@@ -228,11 +240,58 @@ export async function regenerateQrToken(id: string): Promise<TableDto> {
 export async function setTableStatus(id: string, status: TableStatus): Promise<TableDto> {
   const table = await Table.findByIdAndUpdate(
     id,
-    { $set: { status } },
+    { $set: { status, ...(status === 'reserved' ? {} : { reservationNote: null }) } },
     { returnDocument: 'after', lean: true },
   );
   if (!table) throw AppError.notFound('Không tìm thấy bàn');
   return toSingleDto(table);
+}
+
+function tableInUseError(status: TableStatus): AppError {
+  return new AppError(409, 'TABLE_IN_USE', 'Bàn đang được phục vụ, không thể đổi trạng thái', {
+    status,
+  });
+}
+
+function tableInactiveError(): AppError {
+  return new AppError(409, 'TABLE_INACTIVE', 'Bàn đã ngừng sử dụng, không thể đổi trạng thái');
+}
+
+/**
+ * Nhân viên đặt bàn trước (`reserved`) hoặc trả về trống (`available`).
+ * Chỉ khi bàn đang hoạt động, đang available/reserved và không có phiên chưa đóng.
+ * Cập nhật có điều kiện theo trạng thái cũ → nếu khách vừa quét QR mở phiên (bàn → occupied)
+ * thì thao tác của nhân viên bị từ chối (409 TABLE_IN_USE) thay vì ghi đè.
+ */
+export async function setTableReservation(
+  id: string,
+  input: SetTableStatusInput,
+): Promise<TableDto> {
+  const table = await findTableOrThrow(id);
+  if (!table.isActive) throw tableInactiveError();
+  if (!(MANUAL_TABLE_STATUSES as readonly TableStatus[]).includes(table.status)) {
+    throw tableInUseError(table.status);
+  }
+  if (await TableSession.exists({ tableId: table._id, isActive: true })) {
+    throw tableInUseError(table.status);
+  }
+
+  const updated = await Table.findOneAndUpdate(
+    { _id: table._id, isActive: true, status: { $in: MANUAL_TABLE_STATUSES } },
+    {
+      $set: {
+        status: input.status,
+        reservationNote: input.status === 'reserved' ? input.reservationNote : null,
+      },
+    },
+    { returnDocument: 'after', lean: true, runValidators: true },
+  );
+  if (!updated) {
+    // Trạng thái vừa đổi giữa lúc kiểm tra và cập nhật (khách mở phiên / bàn bị tắt / bị xoá).
+    const current = await findTableOrThrow(id);
+    throw current.isActive ? tableInUseError(current.status) : tableInactiveError();
+  }
+  return toSingleDto(updated);
 }
 
 export interface QrImage {

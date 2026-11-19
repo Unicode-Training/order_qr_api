@@ -215,6 +215,13 @@ const tableSchemas = {
       capacity: { type: 'integer', example: 4 },
       isActive: { type: 'boolean', example: true },
       status: { $ref: '#/components/schemas/TableStatus' },
+      reservationNote: {
+        type: 'string',
+        nullable: true,
+        maxLength: 200,
+        example: 'Anh Minh - 19:00 - 6 người',
+        description: 'Ghi chú đặt bàn, chỉ có khi status = reserved',
+      },
       qrToken: { type: 'string', example: 'q1Wm2cZ0p8yH3nVt6Ra9LbXe4KdUs7Gf' },
       qrUrl: {
         type: 'string',
@@ -225,6 +232,20 @@ const tableSchemas = {
       qrTokenUpdatedAt: { type: 'string', format: 'date-time' },
       createdAt: { type: 'string', format: 'date-time' },
       updatedAt: { type: 'string', format: 'date-time' },
+    },
+  },
+  SetTableStatusBody: {
+    type: 'object',
+    required: ['status'],
+    properties: {
+      status: { type: 'string', enum: ['reserved', 'available'] },
+      reservationNote: {
+        type: 'string',
+        nullable: true,
+        maxLength: 200,
+        example: 'Anh Minh - 19:00 - 6 người',
+        description: 'Tuỳ chọn, chỉ khi status = reserved (chuỗi rỗng = null)',
+      },
     },
   },
   TableStats: {

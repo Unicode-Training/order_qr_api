@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import supertest from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
+import { TableSession } from '../src/modules/sessions/tableSession.model';
 import { Table } from '../src/modules/tables/table.model';
 import { setTableStatus } from '../src/modules/tables/table.service';
 import { createUser, loginAs } from './helpers/auth';
@@ -62,6 +63,7 @@ describe('Khu vực, bàn và mã QR', () => {
     ['get', '/api/v1/admin/tables/qr/export'],
     ['get', '/api/v1/admin/tables/665f1c2e8b3a4d0012345678/qr'],
     ['post', '/api/v1/admin/tables/665f1c2e8b3a4d0012345678/qr/regenerate'],
+    ['patch', '/api/v1/admin/tables/665f1c2e8b3a4d0012345678/status'],
   ] as const)('%s %s không có token → 401', async (method, url) => {
     await supertest(app)[method](url).expect(401);
   });
@@ -215,6 +217,95 @@ describe('Khu vực, bàn và mã QR', () => {
 
       const byArea = await api().get(`/api/v1/admin/tables/stats?areaId=${area.id}`).expect(200);
       expect(byArea.body.data).toMatchObject({ total: 4, inactive: 0 });
+    });
+  });
+
+  describe('Đặt bàn trước PATCH /admin/tables/:id/status', () => {
+    const setStatus = (id: string, body: Record<string, unknown>) =>
+      api().patch(`/api/v1/admin/tables/${id}/status`).send(body);
+
+    it('available → reserved (kèm ghi chú) → available, thống kê đếm reserved', async () => {
+      const table = await createTable({ code: 'B01' });
+
+      const reserved = await setStatus(table.id, {
+        status: 'reserved',
+        reservationNote: '  Anh Minh - 19:00  ',
+      }).expect(200);
+      expect(reserved.body.data).toMatchObject({
+        id: table.id,
+        status: 'reserved',
+        reservationNote: 'Anh Minh - 19:00',
+      });
+      const stats = await api().get('/api/v1/admin/tables/stats').expect(200);
+      expect(stats.body.data).toMatchObject({ reserved: 1, available: 0 });
+
+      // reserved → reserved: cập nhật ghi chú
+      const renamed = await setStatus(table.id, { status: 'reserved' }).expect(200);
+      expect(renamed.body.data.reservationNote).toBeNull();
+
+      const back = await setStatus(table.id, { status: 'available' }).expect(200);
+      expect(back.body.data).toMatchObject({ status: 'available', reservationNote: null });
+      const detail = await api().get(`/api/v1/admin/tables/${table.id}`).expect(200);
+      expect(detail.body.data).toMatchObject({ status: 'available', reservationNote: null });
+    });
+
+    it('body không hợp lệ → 400; bàn không tồn tại → 404', async () => {
+      const table = await createTable({ code: 'B01' });
+      await setStatus(table.id, { status: 'occupied' }).expect(400);
+      await setStatus(table.id, {}).expect(400);
+      await setStatus(table.id, { status: 'reserved', reservationNote: 'x'.repeat(201) }).expect(
+        400,
+      );
+      await setStatus(table.id, { status: 'available', reservationNote: 'ghi chú' }).expect(400);
+      await setStatus('665f1c2e8b3a4d0012345678', { status: 'reserved' }).expect(404);
+    });
+
+    it('bàn đang phục vụ / chờ thanh toán / có phiên chưa đóng → 409 TABLE_IN_USE', async () => {
+      const occupied = await createTable({ code: 'B01' });
+      const needsPayment = await createTable({ code: 'B02' });
+      await setTableStatus(occupied.id, 'occupied');
+      await setTableStatus(needsPayment.id, 'needs_payment');
+
+      for (const [id, status] of [
+        [occupied.id, 'reserved'],
+        [occupied.id, 'available'],
+        [needsPayment.id, 'reserved'],
+      ] as const) {
+        const res = await setStatus(id, { status }).expect(409);
+        expect(res.body.error.code).toBe('TABLE_IN_USE');
+      }
+      expect((await Table.findById(occupied.id).lean())!.status).toBe('occupied');
+
+      // Trạng thái bàn lệch nhưng còn phiên chưa đóng → vẫn chặn
+      const withSession = await createTable({ code: 'B03' });
+      await TableSession.create({ tableId: withSession.id });
+      const res = await setStatus(withSession.id, { status: 'reserved' }).expect(409);
+      expect(res.body.error.code).toBe('TABLE_IN_USE');
+      expect((await Table.findById(withSession.id).lean())!.status).toBe('available');
+    });
+
+    it('bàn đã tắt → 409 TABLE_INACTIVE', async () => {
+      const table = await createTable({ code: 'B01', isActive: false });
+      const res = await setStatus(table.id, { status: 'reserved' }).expect(409);
+      expect(res.body.error.code).toBe('TABLE_INACTIVE');
+      expect((await Table.findById(table.id).lean())!.status).toBe('available');
+    });
+
+    it('khách vẫn mở phiên trên bàn reserved → bàn occupied, xoá ghi chú; không đổi được nữa', async () => {
+      const table = await createTable({ code: 'B01' });
+      await setStatus(table.id, { status: 'reserved', reservationNote: 'Chị Lan' }).expect(200);
+
+      const opened = await supertest(app)
+        .post('/api/v1/public/sessions')
+        .send({ qrToken: table.qrToken, guestCount: 2 })
+        .expect(201);
+      expect(opened.body.data.isNew).toBe(true);
+
+      const detail = await api().get(`/api/v1/admin/tables/${table.id}`).expect(200);
+      expect(detail.body.data).toMatchObject({ status: 'occupied', reservationNote: null });
+
+      const res = await setStatus(table.id, { status: 'available' }).expect(409);
+      expect(res.body.error.code).toBe('TABLE_IN_USE');
     });
   });
 
