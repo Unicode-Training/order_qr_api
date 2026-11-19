@@ -2,12 +2,10 @@ import cors, { type CorsOptions } from 'cors';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
-import { env, isProduction } from './config/env';
 import { swaggerSpec } from './config/swagger';
 import { errorHandler, notFoundHandler, requestLogger } from './middlewares';
 import { sanitizeRequest } from './middlewares/sanitize';
 import { createApiRouter } from './routes';
-import { logger } from './utils/logger';
 
 /** Giới hạn kích thước body JSON / form (ảnh upload đi qua multer với giới hạn riêng 5MB). */
 export const BODY_LIMIT = '100kb';
@@ -16,26 +14,16 @@ export const BODY_LIMIT = '100kb';
 const EXPOSED_HEADERS = ['RateLimit', 'RateLimit-Policy', 'Retry-After', 'Content-Disposition'];
 
 /**
- * CORS theo CORS_ORIGINS (phân tách dấu phẩy):
- * - rỗng hoặc `*`: cho phép mọi origin (chỉ nên dùng khi dev; production sẽ log cảnh báo);
- * - danh sách: chỉ các origin khớp chính xác; origin lạ không nhận header Access-Control-*
- *   (trình duyệt tự chặn) — request không có Origin (curl, server-to-server) vẫn đi qua.
+ * CORS mở cho mọi origin (dự án học tập, không ràng buộc domain): phản chiếu Origin của
+ * request (`origin: true`) để vẫn dùng được `credentials`.
  */
-export function buildCorsOptions(origins: readonly string[] = env.CORS_ORIGINS): CorsOptions {
-  const base: CorsOptions = {
+export function buildCorsOptions(): CorsOptions {
+  return {
+    origin: true,
     credentials: true,
     exposedHeaders: EXPOSED_HEADERS,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Token'],
     maxAge: 600,
-  };
-  if (origins.length === 0 || origins.includes('*')) {
-    if (isProduction) logger.warn('CORS_ORIGINS trống hoặc "*" — đang cho phép mọi origin');
-    return { ...base, origin: true };
-  }
-  const allowed = new Set(origins.map((origin) => origin.replace(/\/+$/, '')));
-  return {
-    ...base,
-    origin: (origin, callback) => callback(null, !origin || allowed.has(origin)),
   };
 }
 

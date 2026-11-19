@@ -12,7 +12,6 @@ const defaults: Record<string, string> = {
   LOGIN_RATE_LIMIT_MAX: '5',
   LOGIN_RATE_LIMIT_WINDOW_MINUTES: '15',
   CLIENT_URL: 'http://localhost:3000',
-  CORS_ORIGINS: 'http://localhost:3000',
 };
 
 process.env.NODE_ENV = 'test';

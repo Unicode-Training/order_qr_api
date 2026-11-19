@@ -37,15 +37,6 @@ const envSchema = z.object({
    */
   EMPTY_SESSION_TIMEOUT_MINUTES: z.coerce.number().int().min(0).default(120),
   CLIENT_URL: z.url('CLIENT_URL phải là URL hợp lệ'),
-  CORS_ORIGINS: z
-    .string()
-    .default('')
-    .transform((value) =>
-      value
-        .split(',')
-        .map((origin) => origin.trim())
-        .filter(Boolean),
-    ),
   // Cloudinary (lưu ảnh món/danh mục/nhà hàng). Để trống → API upload trả 503.
   CLOUDINARY_CLOUD_NAME: z.string().trim().default(''),
   CLOUDINARY_API_KEY: z.string().trim().default(''),
