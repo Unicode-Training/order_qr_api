@@ -93,9 +93,10 @@ npm run test:watch
 npm run lint         # ESLint
 npm run format       # Prettier (ghi file); format:check để chỉ kiểm tra
 npm run typecheck
+npm run docs:contract # chạy lại toàn bộ test, đối chiếu MỌI response JSON với docs OpenAPI
 ```
 
-Ngoài test từng module, `tests/e2e.test.ts` chạy trọn luồng qua HTTP: admin tạo món & bàn → khách quét QR → mở phiên → đặt món → nhân viên xác nhận → bếp chuẩn bị → phục vụ → khách yêu cầu thanh toán → thu tiền → bàn trống → dashboard có doanh thu. `tests/openapi.test.ts` kiểm tra spec (mọi route có tài liệu, security đúng nhóm), `tests/hardening.test.ts` kiểm tra bảo mật HTTP, `tests/seed-demo.test.ts` kiểm tra seed.
+Ngoài test từng module, `tests/e2e.test.ts` chạy trọn luồng qua HTTP: admin tạo món & bàn → khách quét QR → mở phiên → đặt món → nhân viên xác nhận → bếp chuẩn bị → phục vụ → khách yêu cầu thanh toán → thu tiền → bàn trống → dashboard có doanh thu. `tests/openapi.test.ts` kiểm tra spec (route đăng ký trong Express ⇄ path trong docs khớp hai chiều, tham số path/query và field body khớp schema zod của `validate()`, route có validate phải khai báo 400, security đúng nhóm), `npm run docs:contract` (`tests/contract/`) kiểm tra response thật: mã HTTP đã khai báo, đúng kiểu/enum/nullable và không có field chưa mô tả — chạy khi đổi DTO, `tests/hardening.test.ts` kiểm tra bảo mật HTTP, `tests/seed-demo.test.ts` kiểm tra seed.
 
 Test dùng MongoDB in-memory (`mongodb-memory-server`), không cần DB thật. Lần chạy đầu tiên sẽ tải binary MongoDB (cần mạng). Biến môi trường cho test được đặt sẵn trong `tests/setup-env.ts`.
 

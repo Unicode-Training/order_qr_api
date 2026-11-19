@@ -42,7 +42,7 @@ const router = Router();
  *                 success: { type: boolean, example: true }
  *                 data: { $ref: '#/components/schemas/UploadedImage' }
  *       400:
- *         description: Thiếu file (FILE_REQUIRED), sai định dạng (INVALID_FILE_TYPE) hoặc folder không hợp lệ
+ *         description: Thiếu file (FILE_REQUIRED), sai định dạng (INVALID_FILE_TYPE), gửi nhiều file / sai tên field (INVALID_UPLOAD_FIELD) hoặc folder không hợp lệ (VALIDATION_ERROR)
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       413:
@@ -52,7 +52,7 @@ const router = Router();
  *         description: Cloudinary lỗi (UPLOAD_FAILED)
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
  *       503:
- *         description: Chưa cấu hình Cloudinary
+ *         description: Chưa cấu hình Cloudinary (SERVICE_UNAVAILABLE)
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
  */
 router.post('/', singleImageUpload, uploadController.upload);
@@ -79,10 +79,18 @@ router.post('/', singleImageUpload, uploadController.upload);
  *               properties:
  *                 success: { type: boolean, example: true }
  *                 data: { type: object, properties: { deleted: { type: boolean } } }
- *       400: { $ref: '#/components/responses/ValidationError' }
+ *       400:
+ *         description: publicId không hợp lệ (VALIDATION_ERROR) hoặc không thuộc thư mục ảnh của ứng dụng (BAD_REQUEST)
+ *         content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       409:
- *         description: Ảnh đang được sử dụng (IMAGE_IN_USE)
+ *         description: Ảnh đang được sử dụng (IMAGE_IN_USE, `details.usage` = nơi đang dùng)
+ *         content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+ *       502:
+ *         description: Cloudinary lỗi khi xoá (DELETE_FAILED)
+ *         content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+ *       503:
+ *         description: Chưa cấu hình Cloudinary (SERVICE_UNAVAILABLE)
  *         content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
  */
 router.delete(

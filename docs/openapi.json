@@ -3,7 +3,7 @@
   "info": {
     "title": "Order QR API",
     "version": "1.0.0",
-    "description": "API đặt món qua mã QR cho nhà hàng.\n\n- `/admin/*`: bắt buộc đăng nhập — header `Authorization: Bearer <accessToken>` (lấy từ `POST /auth/login`). Không phân quyền theo vai trò.\n- `/public/*`: không cần đăng nhập, rate limit theo IP. Các API sau khi quét QR xác thực bằng header `X-Session-Token` (nhận từ `POST /public/sessions`).\n- Response thành công: `{ success: true, data, meta? }`; lỗi: `{ success: false, error: { code, message, details? } }`.\n- Polling: các API danh sách có `updatedSince` trả `meta.serverTime` — dùng làm `updatedSince` cho lần gọi sau."
+    "description": "API đặt món qua mã QR cho nhà hàng.\n\n- `/admin/*`: bắt buộc đăng nhập — header `Authorization: Bearer <accessToken>` (lấy từ `POST /auth/login`). Không phân quyền theo vai trò.\n- `/public/*`: không cần đăng nhập, rate limit theo IP. Các API sau khi quét QR xác thực bằng header `X-Session-Token` (nhận từ `POST /public/sessions`).\n- Response thành công: `{ success: true, data, meta? }`; lỗi: `{ success: false, error: { code, message, details? } }`.\n- Polling: các API danh sách có `updatedSince` trả `meta.serverTime` — dùng làm `updatedSince` cho lần gọi sau.\n- Mã lỗi chung: `400 VALIDATION_ERROR` (sai tham số/body), `400 BAD_REQUEST` (JSON sai cú pháp, id sai định dạng), `401 UNAUTHORIZED | TOKEN_EXPIRED | INVALID_TOKEN`, `404 NOT_FOUND`, `409 CONFLICT` (trùng dữ liệu unique), `413 PAYLOAD_TOO_LARGE` (body > 100kb), `429 TOO_MANY_REQUESTS`, `500 INTERNAL_ERROR`. Lỗi nghiệp vụ riêng của từng API được ghi trong mô tả response."
   },
   "servers": [
     {
@@ -137,7 +137,7 @@
         }
       },
       "Unauthorized": {
-        "description": "Chưa đăng nhập / token không hợp lệ hoặc hết hạn",
+        "description": "Chưa đăng nhập hoặc tài khoản đã bị vô hiệu hoá (UNAUTHORIZED), access token hết hạn (TOKEN_EXPIRED → gọi POST /auth/refresh rồi thử lại), token sai (INVALID_TOKEN)",
         "content": {
           "application/json": {
             "schema": {
@@ -147,7 +147,7 @@
         }
       },
       "ValidationError": {
-        "description": "Dữ liệu không hợp lệ",
+        "description": "Dữ liệu không hợp lệ (VALIDATION_ERROR, `details` = danh sách `{ location, path, message, code }`) hoặc body JSON sai cú pháp (BAD_REQUEST)",
         "content": {
           "application/json": {
             "schema": {
@@ -4463,6 +4463,9 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -4593,6 +4596,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -4810,7 +4816,7 @@
             }
           },
           "400": {
-            "description": "Thiếu file (FILE_REQUIRED), sai định dạng (INVALID_FILE_TYPE) hoặc folder không hợp lệ",
+            "description": "Thiếu file (FILE_REQUIRED), sai định dạng (INVALID_FILE_TYPE), gửi nhiều file / sai tên field (INVALID_UPLOAD_FIELD) hoặc folder không hợp lệ (VALIDATION_ERROR)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4843,7 +4849,7 @@
             }
           },
           "503": {
-            "description": "Chưa cấu hình Cloudinary",
+            "description": "Chưa cấu hình Cloudinary (SERVICE_UNAVAILABLE)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4904,13 +4910,40 @@
             }
           },
           "400": {
-            "$ref": "#/components/responses/ValidationError"
+            "description": "publicId không hợp lệ (VALIDATION_ERROR) hoặc không thuộc thư mục ảnh của ứng dụng (BAD_REQUEST)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
           "409": {
-            "description": "Ảnh đang được sử dụng (IMAGE_IN_USE)",
+            "description": "Ảnh đang được sử dụng (IMAGE_IN_USE, `details.usage` = nơi đang dùng)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Cloudinary lỗi khi xoá (DELETE_FAILED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Chưa cấu hình Cloudinary (SERVICE_UNAVAILABLE)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5171,6 +5204,9 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -5302,6 +5338,9 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -5427,6 +5466,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -5651,6 +5693,9 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -5720,6 +5765,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
           },
           "404": {
             "description": "Mã QR không hợp lệ",
@@ -6407,6 +6455,9 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "401": {
             "$ref": "#/components/responses/InvalidSession"
           },
@@ -6659,6 +6710,9 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -6848,6 +6902,9 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -6972,6 +7029,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -7239,6 +7299,9 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -7441,6 +7504,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -7715,6 +7781,9 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "401": {
             "$ref": "#/components/responses/InvalidSession"
           },
@@ -7977,6 +8046,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -8354,6 +8426,9 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
@@ -8696,6 +8771,9 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -8799,6 +8877,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -8938,6 +9019,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -9109,6 +9193,9 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -9212,6 +9299,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -9756,7 +9846,14 @@
             "$ref": "#/components/responses/ValidationError"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthorized"
+            "description": "Refresh token sai, hết hạn hoặc đã bị thu hồi (INVALID_TOKEN / TOKEN_EXPIRED), hoặc tài khoản\nđã bị vô hiệu hoá (UNAUTHORIZED) → đăng nhập lại\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"
@@ -10066,6 +10163,9 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
@@ -10167,6 +10267,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"

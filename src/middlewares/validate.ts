@@ -17,13 +17,18 @@ export interface ValidationIssue {
   code: string;
 }
 
+/** Khoá gắn schema vào handler — để test đối chiếu tài liệu OpenAPI với validation thật. */
+export const VALIDATION_SCHEMAS = Symbol('validationSchemas');
+
+export type ValidatedHandler = RequestHandler & { [VALIDATION_SCHEMAS]: ValidationSchemas };
+
 /**
  * Validate req.body / req.query / req.params bằng zod.
  * Giá trị sau khi parse (đã coerce/default/strip) được gán lại vào req.
  * Lưu ý Express 5: req.query là getter nên phải ghi đè bằng Object.defineProperty.
  */
-export function validate(schemas: ValidationSchemas): RequestHandler {
-  return (req: Request, _res: Response, next: NextFunction) => {
+export function validate(schemas: ValidationSchemas): ValidatedHandler {
+  const handler: RequestHandler = (req: Request, _res: Response, next: NextFunction) => {
     const issues: ValidationIssue[] = [];
     const parsedValues: Partial<Record<Location, unknown>> = {};
 
@@ -62,4 +67,5 @@ export function validate(schemas: ValidationSchemas): RequestHandler {
     }
     next();
   };
+  return Object.assign(handler, { [VALIDATION_SCHEMAS]: schemas });
 }

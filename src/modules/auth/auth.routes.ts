@@ -86,7 +86,11 @@ export function createAuthRouter(): Router {
    *                 success: { type: boolean, example: true }
    *                 data: { $ref: '#/components/schemas/AuthTokens' }
    *       400: { $ref: '#/components/responses/ValidationError' }
-   *       401: { $ref: '#/components/responses/Unauthorized' }
+   *       401:
+   *         description: |
+   *           Refresh token sai, hết hạn hoặc đã bị thu hồi (INVALID_TOKEN / TOKEN_EXPIRED), hoặc tài khoản
+   *           đã bị vô hiệu hoá (UNAUTHORIZED) → đăng nhập lại
+   *         content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
    */
   router.post('/refresh', validate({ body: refreshTokenBodySchema }), authController.refresh);
 
