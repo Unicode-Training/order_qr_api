@@ -73,6 +73,9 @@ tableSessionSchema.index(
   },
 );
 
+// Danh sách phiên cho nhân viên: lọc theo trạng thái, mới mở trước.
+tableSessionSchema.index({ status: 1, openedAt: -1 });
+
 tableSessionSchema.pre('validate', function syncIsActive() {
   this.isActive = this.status !== 'closed';
 });

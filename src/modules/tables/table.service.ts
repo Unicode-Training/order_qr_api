@@ -8,8 +8,9 @@ import {
 } from '../../utils/pagination';
 import { Area } from '../areas/area.model';
 import { assertAreaExists } from '../areas/area.service';
-// Chỉ đọc model phiên (file lá, không import ngược tables) để kiểm tra bàn có phiên đang mở.
-import { TableSession } from '../sessions/tableSession.model';
+// Chỉ đọc model đơn/phiên (file lá, không import ngược tables) để kiểm tra/hiển thị phiên đang mở.
+import { Order } from '../orders/order.model';
+import { TableSession, type SessionStatus } from '../sessions/tableSession.model';
 import { getPublicRestaurant, type PublicRestaurant } from '../settings/settings.service';
 import { buildTableQrUrl, QR_CONTENT_TYPES, renderQr, renderQrPng, type QrFormat } from './qr';
 import {
@@ -53,8 +54,20 @@ export interface TableDto {
   /** Nội dung mã QR: `${CLIENT_URL}/t/${qrToken}`. */
   qrUrl: string;
   qrTokenUpdatedAt: Date;
+  /** Phiên chưa đóng của bàn (null nếu bàn không có phiên). */
+  currentSession: TableCurrentSession | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface TableCurrentSession {
+  id: string;
+  status: SessionStatus;
+  guestCount: number | null;
+  openedAt: Date;
+  paymentRequestedAt: Date | null;
+  /** Số đơn không bị huỷ. */
+  orderCount: number;
 }
 
 export interface TableStats {
@@ -83,7 +96,67 @@ async function loadAreaMap(tables: readonly LeanTable[]): Promise<Map<string, Ta
   return new Map(areas.map((a) => [a._id.toString(), { id: a._id.toString(), name: a.name }]));
 }
 
-function toTableDto(table: LeanTable, areas: Map<string, TableAreaRef>): TableDto {
+/**
+ * Phiên chưa đóng của các bàn + số đơn (không tính huỷ) — một aggregation cho cả trang.
+ */
+async function loadCurrentSessionMap(
+  tables: readonly LeanTable[],
+): Promise<Map<string, TableCurrentSession>> {
+  if (tables.length === 0) return new Map();
+  const rows = await TableSession.aggregate<{
+    _id: Types.ObjectId;
+    tableId: Types.ObjectId;
+    status: SessionStatus;
+    guestCount: number | null;
+    openedAt: Date;
+    paymentRequestedAt: Date | null;
+    orderCount: number;
+  }>([
+    { $match: { tableId: { $in: tables.map((t) => t._id) }, isActive: true } },
+    {
+      $lookup: {
+        from: Order.collection.collectionName,
+        let: { sessionId: '$_id' },
+        pipeline: [
+          {
+            $match: { $expr: { $eq: ['$sessionId', '$$sessionId'] }, status: { $ne: 'cancelled' } },
+          },
+          { $count: 'count' },
+        ],
+        as: 'orderStats',
+      },
+    },
+    {
+      $project: {
+        tableId: 1,
+        status: 1,
+        guestCount: 1,
+        openedAt: 1,
+        paymentRequestedAt: 1,
+        orderCount: { $ifNull: [{ $first: '$orderStats.count' }, 0] },
+      },
+    },
+  ]);
+  return new Map(
+    rows.map((row) => [
+      row.tableId.toString(),
+      {
+        id: row._id.toString(),
+        status: row.status,
+        guestCount: row.guestCount ?? null,
+        openedAt: row.openedAt,
+        paymentRequestedAt: row.paymentRequestedAt ?? null,
+        orderCount: row.orderCount,
+      },
+    ]),
+  );
+}
+
+function toTableDto(
+  table: LeanTable,
+  areas: Map<string, TableAreaRef>,
+  sessions: Map<string, TableCurrentSession>,
+): TableDto {
   const areaId = table.areaId ? table.areaId.toString() : null;
   return {
     id: table._id.toString(),
@@ -98,14 +171,15 @@ function toTableDto(table: LeanTable, areas: Map<string, TableAreaRef>): TableDt
     qrToken: table.qrToken,
     qrUrl: buildTableQrUrl(table.qrToken),
     qrTokenUpdatedAt: table.qrTokenUpdatedAt,
+    currentSession: sessions.get(table._id.toString()) ?? null,
     createdAt: table.createdAt,
     updatedAt: table.updatedAt,
   };
 }
 
 async function toTableDtos(tables: LeanTable[]): Promise<TableDto[]> {
-  const areas = await loadAreaMap(tables);
-  return tables.map((t) => toTableDto(t, areas));
+  const [areas, sessions] = await Promise.all([loadAreaMap(tables), loadCurrentSessionMap(tables)]);
+  return tables.map((t) => toTableDto(t, areas, sessions));
 }
 
 async function toSingleDto(table: LeanTable): Promise<TableDto> {
@@ -360,9 +434,15 @@ export async function resolveQrToken(qrToken: string): Promise<ResolvedTable> {
   if (!table)
     throw new AppError(404, 'TABLE_NOT_FOUND', 'Mã QR không hợp lệ hoặc bàn không còn sử dụng');
 
-  const [dto, restaurant] = await Promise.all([toSingleDto(table), getPublicRestaurant()]);
+  const [areas, restaurant] = await Promise.all([loadAreaMap([table]), getPublicRestaurant()]);
+  const areaId = table.areaId?.toString();
   return {
-    table: { id: dto.id, code: dto.code, name: dto.name, area: dto.area },
+    table: {
+      id: table._id.toString(),
+      code: table.code,
+      name: table.name,
+      area: areaId ? (areas.get(areaId) ?? null) : null,
+    },
     restaurant,
   };
 }

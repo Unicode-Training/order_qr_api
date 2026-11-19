@@ -230,6 +230,7 @@ const tableSchemas = {
         description: 'Nội dung mã QR',
       },
       qrTokenUpdatedAt: { type: 'string', format: 'date-time' },
+      currentSession: { $ref: '#/components/schemas/TableCurrentSession' },
       createdAt: { type: 'string', format: 'date-time' },
       updatedAt: { type: 'string', format: 'date-time' },
     },
@@ -308,6 +309,10 @@ const rawSpec = swaggerJsdoc({
       {
         name: 'Payments',
         description: 'Hoá đơn, ghi nhận thanh toán thủ công, đóng / chuyển / huỷ phiên bàn',
+      },
+      {
+        name: 'Sessions',
+        description: 'Nhân viên xem danh sách / chi tiết phiên bàn, sửa số khách',
       },
       {
         name: 'Dashboard',

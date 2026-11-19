@@ -97,7 +97,7 @@ function toPaymentDto(payment: LeanPayment, cashierName: string | null): Payment
   };
 }
 
-async function toPaymentDtos(payments: LeanPayment[]): Promise<PaymentDto[]> {
+export async function toPaymentDtos(payments: LeanPayment[]): Promise<PaymentDto[]> {
   const cashierIds = [...new Set(payments.map((p) => p.cashierId.toString()))];
   const users = await User.find({ _id: { $in: cashierIds } })
     .select('fullName')

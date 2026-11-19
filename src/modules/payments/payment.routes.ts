@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { validate } from '../../middlewares/validate';
 import { idParamsSchema } from '../../utils/objectId';
+import * as adminSessionController from './adminSession.controller';
+import { listAdminSessionsQuerySchema, updateAdminSessionSchema } from './adminSession.schema';
 import * as paymentController from './payment.controller';
 import {
   cancelSessionSchema,
@@ -50,6 +52,125 @@ adminTableBillRouter.get(
  * Thao tác của nhân viên trên phiên bàn — gắn dưới /api/v1/admin/sessions.
  */
 export const adminSessionsRouter = Router();
+
+/**
+ * @openapi
+ * /admin/sessions:
+ *   get:
+ *     tags: [Sessions]
+ *     summary: Danh sách phiên bàn (đang mở / lịch sử)
+ *     description: |
+ *       Mặc định chỉ trả phiên chưa đóng (`open`, `payment_requested`); có `closeReason` mà không có `status`
+ *       → mặc định `closed`. `from`/`to` lọc theo ngày mở phiên (`openedAt`, giờ Asia/Ho_Chi_Minh, gồm cả hai đầu).
+ *       `orderCount`/`subtotal` không tính đơn đã huỷ. Không bao giờ trả `sessionToken`.
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
+ *       - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+ *       - in: query
+ *         name: sort
+ *         description: 'openedAt, closedAt, createdAt, updatedAt (tiền tố - để giảm dần). Mặc định -openedAt.'
+ *         schema: { type: string }
+ *       - in: query
+ *         name: status
+ *         description: Một hoặc nhiều trạng thái, cách nhau bởi dấu phẩy
+ *         schema: { type: string, example: 'open,payment_requested' }
+ *       - { in: query, name: tableId, schema: { type: string } }
+ *       - { in: query, name: areaId, schema: { type: string } }
+ *       - in: query
+ *         name: from
+ *         description: Ngày mở phiên bắt đầu (giờ Việt Nam), gồm cả ngày này
+ *         schema: { type: string, format: date, example: '2026-11-01' }
+ *       - in: query
+ *         name: to
+ *         description: Ngày mở phiên kết thúc, gồm cả ngày này
+ *         schema: { type: string, format: date, example: '2026-11-30' }
+ *       - { in: query, name: closeReason, schema: { type: string, enum: [paid, cancelled] } }
+ *     responses:
+ *       200:
+ *         description: Danh sách phiên
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 data: { type: array, items: { $ref: '#/components/schemas/AdminSession' } }
+ *                 meta: { $ref: '#/components/schemas/PaginationMeta' }
+ *       400: { $ref: '#/components/responses/ValidationError' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ */
+adminSessionsRouter.get(
+  '/',
+  validate({ query: listAdminSessionsQuerySchema }),
+  adminSessionController.listSessions,
+);
+
+/**
+ * @openapi
+ * /admin/sessions/{id}:
+ *   get:
+ *     tags: [Sessions]
+ *     summary: Chi tiết phiên bàn (đơn, thanh toán, hoá đơn tạm tính)
+ *     description: |
+ *       Như một phần tử của danh sách + `orders` (mọi đơn của phiên, kể cả đơn huỷ, cũ trước),
+ *       `payment` (khi đã thu tiền) và `bill` (hoá đơn tạm tính, chỉ khi phiên chưa đóng).
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string } }
+ *     responses:
+ *       200:
+ *         description: Chi tiết phiên
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 data: { $ref: '#/components/schemas/AdminSessionDetail' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       404: { $ref: '#/components/responses/NotFound' }
+ *   patch:
+ *     tags: [Sessions]
+ *     summary: Nhân viên sửa số khách / tên khách / ghi chú của phiên chưa đóng
+ *     description: Cùng định dạng body với `PATCH /public/sessions/current`. Chuỗi rỗng → null.
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - { in: path, name: id, required: true, schema: { type: string } }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema: { $ref: '#/components/schemas/UpdateSessionBody' }
+ *     responses:
+ *       200:
+ *         description: Phiên sau khi cập nhật
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 data: { $ref: '#/components/schemas/AdminSession' }
+ *       400: { $ref: '#/components/responses/ValidationError' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       404: { $ref: '#/components/responses/NotFound' }
+ *       409:
+ *         description: SESSION_CLOSED — phiên đã đóng
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ */
+adminSessionsRouter.get(
+  '/:id',
+  validate({ params: idParamsSchema }),
+  adminSessionController.getSession,
+);
+adminSessionsRouter.patch(
+  '/:id',
+  validate({ params: idParamsSchema, body: updateAdminSessionSchema }),
+  adminSessionController.updateSession,
+);
 
 /**
  * @openapi

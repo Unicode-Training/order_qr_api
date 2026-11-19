@@ -2,6 +2,7 @@
 
 const ORDER_STATUSES = ['pending', 'confirmed', 'preparing', 'ready', 'served', 'cancelled'];
 const PAYMENT_METHODS = ['cash', 'bank_transfer', 'card'];
+const SESSION_STATUSES = ['open', 'payment_requested', 'closed'];
 const idProp = { type: 'string', example: '665f1c2e8b3a4d0012345678' };
 const dateTime = { type: 'string', format: 'date-time' };
 
@@ -230,6 +231,80 @@ export const paymentSchemas = {
           ]),
         ),
       },
+    },
+  },
+  AdminSession: {
+    type: 'object',
+    description: 'Phiên bàn cho nhân viên (không có sessionToken)',
+    properties: {
+      id: idProp,
+      table: {
+        type: 'object',
+        nullable: true,
+        properties: {
+          id: idProp,
+          code: { type: 'string', example: 'B08' },
+          name: { type: 'string', example: 'Bàn 08' },
+        },
+      },
+      status: { type: 'string', enum: SESSION_STATUSES },
+      guestCount: { type: 'integer', nullable: true, example: 4 },
+      customerName: { type: 'string', nullable: true, example: 'Anh Minh' },
+      note: { type: 'string', nullable: true },
+      openedAt: dateTime,
+      paymentRequestedAt: { ...dateTime, nullable: true },
+      preferredPaymentMethod: { type: 'string', enum: PAYMENT_METHODS, nullable: true },
+      closedAt: { ...dateTime, nullable: true },
+      closeReason: { type: 'string', enum: ['paid', 'cancelled'], nullable: true },
+      closedBy: {
+        type: 'object',
+        nullable: true,
+        properties: { id: idProp, fullName: { type: 'string', nullable: true } },
+      },
+      orderCount: { type: 'integer', example: 3, description: 'Số đơn không bị huỷ' },
+      subtotal: {
+        type: 'number',
+        example: 455000,
+        description: 'Tổng tiền món (trước phí phục vụ/VAT) của các đơn không bị huỷ',
+      },
+    },
+  },
+  AdminSessionDetail: {
+    allOf: [
+      { $ref: '#/components/schemas/AdminSession' },
+      {
+        type: 'object',
+        properties: {
+          orders: {
+            type: 'array',
+            description: 'Mọi đơn của phiên (kể cả đơn huỷ), cũ trước',
+            items: { $ref: '#/components/schemas/AdminOrder' },
+          },
+          payment: {
+            allOf: [{ $ref: '#/components/schemas/Payment' }],
+            nullable: true,
+            description: 'Chỉ khi phiên đã thanh toán',
+          },
+          bill: {
+            allOf: [{ $ref: '#/components/schemas/Bill' }],
+            nullable: true,
+            description: 'Hoá đơn tạm tính — chỉ khi phiên chưa đóng',
+          },
+        },
+      },
+    ],
+  },
+  TableCurrentSession: {
+    type: 'object',
+    nullable: true,
+    description: 'Phiên chưa đóng của bàn (null nếu bàn không có phiên)',
+    properties: {
+      id: idProp,
+      status: { type: 'string', enum: ['open', 'payment_requested'] },
+      guestCount: { type: 'integer', nullable: true, example: 4 },
+      openedAt: dateTime,
+      paymentRequestedAt: { ...dateTime, nullable: true },
+      orderCount: { type: 'integer', example: 2, description: 'Số đơn không bị huỷ' },
     },
   },
 };
